@@ -1,0 +1,2 @@
+class IAlarmMkAlarmError(Exception):
+    pass

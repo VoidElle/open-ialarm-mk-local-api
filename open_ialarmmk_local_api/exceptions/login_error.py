@@ -1,0 +1,2 @@
+class IAlarmMkLoginError(Exception):
+    pass
