@@ -8,6 +8,10 @@ Usage:
     python arm_away.py --host 192.168.1.100 --user admin --password secret cancel
 """
 
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 import argparse
 import asyncio
 
@@ -38,7 +42,7 @@ async def main(host: str, port: int, user: str, password: str, command: str) -> 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Change iAlarm-MK arm mode")
     parser.add_argument("--host", required=True)
-    parser.add_argument("--port", type=int, default=18034)
+    parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--user", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument("command", choices=list(_COMMANDS))

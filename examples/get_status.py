@@ -2,8 +2,12 @@
 
 Usage:
     python get_status.py --host 192.168.1.100 --user admin --password secret
-    python get_status.py --host 192.168.1.100 --port 18034 --user admin --password secret
+    python get_status.py --host 192.168.1.100 --port 8000 --user admin --password secret
 """
+
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import argparse
 import asyncio
@@ -53,7 +57,7 @@ async def main(host: str, port: int, user: str, password: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Read iAlarm-MK status")
     parser.add_argument("--host", required=True)
-    parser.add_argument("--port", type=int, default=18034)
+    parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--user", required=True)
     parser.add_argument("--password", required=True)
     args = parser.parse_args()

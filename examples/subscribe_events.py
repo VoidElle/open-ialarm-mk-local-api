@@ -7,6 +7,10 @@ Usage:
     python subscribe_events.py --host 192.168.1.100 --user admin --password secret
 """
 
+import os
+import sys
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
 import argparse
 import asyncio
 import signal
@@ -83,7 +87,7 @@ async def main(host: str, port: int, user: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Stream iAlarm-MK push events")
     parser.add_argument("--host", required=True)
-    parser.add_argument("--port", type=int, default=18034)
+    parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--user", required=True)
     args = parser.parse_args()
 
