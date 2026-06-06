@@ -309,6 +309,8 @@ class MeianClient:
 
         except IAlarmMkLoginError:
             raise
+        except IAlarmMkConnectionError:
+            raise
         except socket.timeout as exc:
             logger.error("login: connection timed out after %.1fs", self._timeout)
             self.close_socket()
@@ -321,6 +323,10 @@ class MeianClient:
             logger.error("login: network error: %s", exc)
             self.close_socket()
             raise IAlarmMkConnectionError("Connection error: network error") from exc
+        except Exception as exc:
+            logger.error("login: unexpected error: %s", exc)
+            self.close_socket()
+            raise IAlarmMkConnectionError(f"Connection error: unexpected error during login: {exc}") from exc
 
     def logout(self) -> None:
         """Close the TCP connection and reset session state."""
@@ -451,20 +457,44 @@ class MeianClient:
         """Read one response frame and return it as a decoded dict.
 
         The frame header is 16 bytes (``@ieM`` + length + seq + ``0000``);
-        the trailer is the 4-byte sequence repeated at the end.
+        bytes [4:8] carry the payload length as a 4-char decimal string.
+        The trailer is the 4-byte sequence number repeated at the end.
         Slice ``data[16:-4]`` extracts the XOR-encoded XML payload.
+
+        Uses a two-phase read so that large MK7 login responses (> 1024 bytes)
+        are received in full rather than truncated by a single ``recv(1024)``.
         """
         if self._sock is None:
             raise IAlarmMkConnectionError("Connection error")
         try:
-            data = self._sock.recv(1024)
+            header = b""
+            while len(header) < 16:
+                chunk = self._sock.recv(16 - len(header))
+                if not chunk:
+                    raise IAlarmMkConnectionError("Connection closed while reading header")
+                header += chunk
+
+            payload_len = int(header[4:8])
+            logger.debug("_receive: header=%s declared payload_len=%d", header[0:4], payload_len)
+
+            to_read = payload_len + 4
+            body = b""
+            while len(body) < to_read:
+                chunk = self._sock.recv(min(4096, to_read - len(body)))
+                if not chunk:
+                    raise IAlarmMkConnectionError("Connection closed while reading payload")
+                body += chunk
+
+            data = header + body
+        except IAlarmMkConnectionError:
+            raise
         except socket.timeout as exc:
             raise IAlarmMkConnectionError("Connection timed out") from exc
         except OSError as exc:
             self.close_socket()
             raise IAlarmMkConnectionError("Connection error") from exc
 
-        logger.debug("_receive: raw frame length=%d header=%s", len(data), data[0:4])
+        logger.debug("_receive: total frame length=%d", len(data))
         return xmltodict.parse(
             _xor(data[16:-4]).decode(),
             xml_attribs=False,
