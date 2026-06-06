@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import argparse
 import asyncio
 
-from open_ialarmmk_local_api import (
+from open_ialarm_mk_local_api import (
     IAlarmMkClient,
     IAlarmMkConnectionError,
     IAlarmMkLoginError,

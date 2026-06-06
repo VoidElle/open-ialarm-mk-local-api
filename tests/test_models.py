@@ -1,10 +1,10 @@
 import unittest
 
-from open_ialarmmk_local_api.enums.alarm_status_enum import AlarmStatusEnum
-from open_ialarmmk_local_api.enums.zone_status_enum import ZoneStatusEnum
-from open_ialarmmk_local_api.models.alarm_status_model import AlarmStatusModel
-from open_ialarmmk_local_api.models.network_info_model import NetworkInfoModel
-from open_ialarmmk_local_api.models.zone_model import ZoneModel
+from open_ialarm_mk_local_api.enums.alarm_status_enum import AlarmStatusEnum
+from open_ialarm_mk_local_api.enums.zone_status_enum import ZoneStatusEnum
+from open_ialarm_mk_local_api.models.alarm_status_model import AlarmStatusModel
+from open_ialarm_mk_local_api.models.network_info_model import NetworkInfoModel
+from open_ialarm_mk_local_api.models.zone_model import ZoneModel
 
 
 class TestNetworkInfoModel(unittest.TestCase):

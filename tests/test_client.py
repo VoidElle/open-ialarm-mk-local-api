@@ -1,12 +1,12 @@
 import unittest
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
-from open_ialarmmk_local_api.enums.alarm_status_enum import AlarmStatusEnum
-from open_ialarmmk_local_api.enums.zone_status_enum import ZoneStatusEnum
-from open_ialarmmk_local_api.exceptions.connection_error import IAlarmMkConnectionError
-from open_ialarmmk_local_api.exceptions.login_error import IAlarmMkLoginError
-from open_ialarmmk_local_api.ialarmmk_client import IAlarmMkClient
-from open_ialarmmk_local_api.ialarmmk_push_client import IAlarmMkPushClient
+from open_ialarm_mk_local_api.enums.alarm_status_enum import AlarmStatusEnum
+from open_ialarm_mk_local_api.enums.zone_status_enum import ZoneStatusEnum
+from open_ialarm_mk_local_api.exceptions.connection_error import IAlarmMkConnectionError
+from open_ialarm_mk_local_api.exceptions.login_error import IAlarmMkLoginError
+from open_ialarm_mk_local_api.ialarmmk_client import IAlarmMkClient
+from open_ialarm_mk_local_api.ialarmmk_push_client import IAlarmMkPushClient
 
 
 class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
@@ -15,7 +15,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
     # connect / disconnect
     # ------------------------------------------------------------------
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_connect_and_disconnect_delegate(self, meian_client_cls):
         backend = MagicMock()
         meian_client_cls.return_value = backend
@@ -27,7 +27,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
         backend.login.assert_called_once_with()
         backend.logout.assert_called_once_with()
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_context_manager_connects_and_disconnects(self, meian_client_cls):
         backend = MagicMock()
         meian_client_cls.return_value = backend
@@ -37,7 +37,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
 
         backend.logout.assert_called_once()
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_connect_propagates_connection_error(self, meian_client_cls):
         backend = MagicMock()
         backend.login.side_effect = IAlarmMkConnectionError("timeout")
@@ -47,7 +47,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(IAlarmMkConnectionError):
             await client.connect()
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_connect_propagates_login_error(self, meian_client_cls):
         backend = MagicMock()
         backend.login.side_effect = IAlarmMkLoginError("bad creds")
@@ -61,7 +61,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
     # get_status
     # ------------------------------------------------------------------
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_status_maps_known_value(self, meian_client_cls):
         backend = MagicMock()
         backend.get_alarm_status.return_value = {"DevStatus": 2}
@@ -72,7 +72,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status.status, AlarmStatusEnum.ARMED_STAY)
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_status_maps_unknown_value_to_unavailable(self, meian_client_cls):
         backend = MagicMock()
         backend.get_alarm_status.return_value = {"DevStatus": 99}
@@ -83,7 +83,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status.status, AlarmStatusEnum.UNAVAILABLE)
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_status_handles_none_dev_status(self, meian_client_cls):
         backend = MagicMock()
         backend.get_alarm_status.return_value = {"DevStatus": None}
@@ -94,7 +94,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(status.status, AlarmStatusEnum.ARMED_AWAY)
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_status_all_enum_values(self, meian_client_cls):
         backend = MagicMock()
         meian_client_cls.return_value = backend
@@ -109,7 +109,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
     # get_network_info
     # ------------------------------------------------------------------
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_network_info_maps_model(self, meian_client_cls):
         backend = MagicMock()
         backend.get_network_info.return_value = {"Mac": "AA", "Name": "Panel", "Ip": "10.0.0.2"}
@@ -122,7 +122,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(info.name, "Panel")
         self.assertEqual(info.ip, "10.0.0.2")
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_network_info_missing_name_defaults(self, meian_client_cls):
         backend = MagicMock()
         backend.get_network_info.return_value = {"Mac": "BB:CC", "Ip": "1.2.3.4"}
@@ -137,7 +137,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
     # get_zones
     # ------------------------------------------------------------------
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_zones_maps_zone_models(self, meian_client_cls):
         backend = MagicMock()
         backend.get_zones.return_value = [
@@ -155,7 +155,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(zones[0].is_open)
         self.assertEqual(zones[1].status, ZoneStatusEnum.BYPASS)
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_zones_empty_list(self, meian_client_cls):
         backend = MagicMock()
         backend.get_zones.return_value = []
@@ -166,7 +166,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(zones, [])
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_zones_none_status_treated_as_zero(self, meian_client_cls):
         backend = MagicMock()
         backend.get_zones.return_value = [{"Name": "Sensor", "Type": 0, "Status": None}]
@@ -179,7 +179,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(zones[0].is_open)
         self.assertFalse(zones[0].is_bypassed)
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_zones_preserves_enumerate_index(self, meian_client_cls):
         backend = MagicMock()
         backend.get_zones.return_value = [
@@ -198,7 +198,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
     # arm / disarm commands
     # ------------------------------------------------------------------
 
-    @patch("open_ialarmmk_local_api.ialarmmk_client.MeianClient")
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_alarm_commands_forward_expected_status_codes(self, meian_client_cls):
         backend = MagicMock()
         meian_client_cls.return_value = backend

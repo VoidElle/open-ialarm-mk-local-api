@@ -29,10 +29,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/VoidElle/open-ialarmmk-local-api"
-Source = "https://github.com/VoidElle/open-ialarmmk-local-api"
-"Bug Tracker" = "https://github.com/VoidElle/open-ialarmmk-local-api/issues"
+Homepage = "https://github.com/VoidElle/open-ialarm-mk-local-api"
+Source = "https://github.com/VoidElle/open-ialarm-mk-local-api"
+"Bug Tracker" = "https://github.com/VoidElle/open-ialarm-mk-local-api/issues"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["open_ialarmmk_local_api*"]
+include = ["open_ialarm_mk_local_api*"]

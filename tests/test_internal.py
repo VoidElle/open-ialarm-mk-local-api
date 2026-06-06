@@ -4,7 +4,7 @@ import socket
 import unittest
 from unittest.mock import MagicMock, patch
 
-from open_ialarmmk_local_api._internal.meian_client import (
+from open_ialarm_mk_local_api._internal.meian_client import (
     MeianClient,
     _bol,
     _create,
@@ -18,8 +18,8 @@ from open_ialarmmk_local_api._internal.meian_client import (
     _xor,
     _xmlread,
 )
-from open_ialarmmk_local_api.exceptions.connection_error import IAlarmMkConnectionError
-from open_ialarmmk_local_api.exceptions.login_error import IAlarmMkLoginError
+from open_ialarm_mk_local_api.exceptions.connection_error import IAlarmMkConnectionError
+from open_ialarm_mk_local_api.exceptions.login_error import IAlarmMkLoginError
 
 
 # ---------------------------------------------------------------------------
@@ -282,7 +282,7 @@ def _make_mock_sock():
 
 class TestMeianClientLogin(unittest.TestCase):
 
-    @patch("open_ialarmmk_local_api._internal.meian_client.socket.socket")
+    @patch("open_ialarm_mk_local_api._internal.meian_client.socket.socket")
     def test_login_propagates_connection_error_from_receive(self, mock_socket_cls):
         """IAlarmMkConnectionError from _receive() propagates through login()."""
         mock_sock = _make_mock_sock()
@@ -296,7 +296,7 @@ class TestMeianClientLogin(unittest.TestCase):
                 client.login()
         self.assertIn("header", str(ctx.exception).lower())
 
-    @patch("open_ialarmmk_local_api._internal.meian_client.socket.socket")
+    @patch("open_ialarm_mk_local_api._internal.meian_client.socket.socket")
     def test_login_wraps_expat_error_in_connection_error(self, mock_socket_cls):
         """XML parse failure (e.g. ExpatError from truncated response) is wrapped."""
         from xml.parsers.expat import ExpatError
@@ -311,7 +311,7 @@ class TestMeianClientLogin(unittest.TestCase):
                 client.login()
         self.assertIn("syntax error", str(ctx.exception).lower())
 
-    @patch("open_ialarmmk_local_api._internal.meian_client.socket.socket")
+    @patch("open_ialarm_mk_local_api._internal.meian_client.socket.socket")
     def test_login_wraps_unexpected_exception_with_detail(self, mock_socket_cls):
         """Any unexpected exception is wrapped and its message preserved."""
         mock_sock = _make_mock_sock()
@@ -325,7 +325,7 @@ class TestMeianClientLogin(unittest.TestCase):
                 client.login()
         self.assertIn("totally unexpected", str(ctx.exception))
 
-    @patch("open_ialarmmk_local_api._internal.meian_client.socket.socket")
+    @patch("open_ialarm_mk_local_api._internal.meian_client.socket.socket")
     def test_login_connection_refused_raises_connection_error(self, mock_socket_cls):
         """ConnectionRefusedError from connect() raises IAlarmMkConnectionError."""
         mock_sock = _make_mock_sock()
@@ -335,7 +335,7 @@ class TestMeianClientLogin(unittest.TestCase):
         with self.assertRaises(IAlarmMkConnectionError):
             client.login()
 
-    @patch("open_ialarmmk_local_api._internal.meian_client.socket.socket")
+    @patch("open_ialarm_mk_local_api._internal.meian_client.socket.socket")
     def test_login_socket_timeout_raises_connection_error(self, mock_socket_cls):
         """socket.timeout from connect() raises IAlarmMkConnectionError."""
         mock_sock = _make_mock_sock()
@@ -345,7 +345,7 @@ class TestMeianClientLogin(unittest.TestCase):
         with self.assertRaises(IAlarmMkConnectionError):
             client.login()
 
-    @patch("open_ialarmmk_local_api._internal.meian_client.socket.socket")
+    @patch("open_ialarm_mk_local_api._internal.meian_client.socket.socket")
     def test_login_bad_credentials_raises_login_error(self, mock_socket_cls):
         """Non-zero Err in panel response raises IAlarmMkLoginError."""
         mock_sock = _make_mock_sock()
@@ -358,7 +358,7 @@ class TestMeianClientLogin(unittest.TestCase):
             with self.assertRaises(IAlarmMkLoginError):
                 client.login()
 
-    @patch("open_ialarmmk_local_api._internal.meian_client.socket.socket")
+    @patch("open_ialarm_mk_local_api._internal.meian_client.socket.socket")
     def test_login_enables_keepalive_on_connect(self, mock_socket_cls):
         """SO_KEEPALIVE is set on the socket after a successful connect."""
         mock_sock = _make_mock_sock()

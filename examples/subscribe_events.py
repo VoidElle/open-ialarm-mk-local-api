@@ -16,7 +16,7 @@ import asyncio
 import signal
 from datetime import datetime
 
-from open_ialarmmk_local_api import IAlarmMkPushClient, IAlarmMkConnectionError
+from open_ialarm_mk_local_api import IAlarmMkPushClient, IAlarmMkConnectionError
 
 # Contact-ID event codes to human-readable descriptions.
 _CID_LABELS = {

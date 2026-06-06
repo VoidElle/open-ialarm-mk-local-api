@@ -1,55 +1,55 @@
-# 🚨 Open iAlarm-MK Local API
+# Open iAlarm-MK Local API
 
 > *Asynchronous Python library for iAlarm-MK alarm panels via the local Meian protocol*
 
 [![Python Version](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Version](https://img.shields.io/github/v/release/VoidElle/open-ialarmmk-local-api?label=version)](https://github.com/VoidElle/open-ialarmmk-local-api/releases)
-[![Tests](https://github.com/VoidElle/open-ialarmmk-local-api/actions/workflows/tests.yml/badge.svg)](https://github.com/VoidElle/open-ialarmmk-local-api/actions/workflows/tests.yml)
+[![Version](https://img.shields.io/github/v/release/VoidElle/open-ialarm-mk-local-api?label=version)](https://github.com/VoidElle/open-ialarm-mk-local-api/releases)
+[![Tests](https://github.com/VoidElle/open-ialarm-mk-local-api/actions/workflows/tests.yml/badge.svg)](https://github.com/VoidElle/open-ialarm-mk-local-api/actions/workflows/tests.yml)
 
-**[Features](#-features) • [Installation](#-installation) • [Quick Start](#-quick-start) • [Documentation](#-documentation) • [Examples](#-examples) • [Testing](#-testing)**
+**[Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Examples](#examples) • [Testing](#testing)**
 
 ---
 
-## ✨ Features
+## Features
 
-### 🚀 **Performance**
+### Performance
 - Built with **asyncio** for non-blocking operations
 - Efficient TCP communication over the Meian binary protocol
 - TCP keep-alive to prevent idle connection drops
 
-### 🔄 **Reliability**
-- Framed two-phase read — large MK7 responses (>1024 bytes) always received in full
+### Reliability
+- Framed two-phase read: large MK7 responses (>1024 bytes) always received in full
 - Graceful error propagation with full detail preserved
 - Auto-close socket on connection failure
 
-### 🎯 **Developer Friendly**
-- Type-safe dataclasses — `AlarmStatusModel`, `ZoneModel`, `NetworkInfoModel`
+### Developer Friendly
+- Type-safe dataclasses: `AlarmStatusModel`, `ZoneModel`, `NetworkInfoModel`
 - Async context manager support
 - Comprehensive logging at every step
 
-### 🎛️ **Full Control**
+### Full Control
 - Arm Away, Arm Stay, Arm Partial, Disarm, Cancel Alarm
 - Read all zones with status (open, bypassed, low battery, signal loss)
 - Read network info (name, MAC, IP)
 
 ---
 
-## 📦 Installation
+## Installation
 
 ```bash
-git clone https://github.com/VoidElle/open-ialarmmk-local-api
-cd open-ialarmmk-local-api
+git clone https://github.com/VoidElle/open-ialarm-mk-local-api
+cd open-ialarm-mk-local-api
 pip install -e .
 ```
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ```python
 import asyncio
-from open_ialarmmk_local_api import IAlarmMkClient
+from open_ialarm_mk_local_api import IAlarmMkClient
 
 async def main():
     async with IAlarmMkClient("192.168.1.100", 8000, "admin", "012345") as client:
@@ -58,14 +58,14 @@ async def main():
 
         zones = await client.get_zones()
         for zone in zones:
-            print(f"  [{zone.index:3d}] {zone.name} — {'OPEN' if zone.is_open else 'ok'}")
+            print(f"  [{zone.index:3d}] {zone.name} - {'OPEN' if zone.is_open else 'ok'}")
 
 asyncio.run(main())
 ```
 
 ---
 
-## 📡 Panel Port
+## Panel Port
 
 | Model | Default TCP port |
 |-------|:----------------:|
@@ -74,31 +74,31 @@ asyncio.run(main())
 
 ---
 
-## 📚 Documentation
+## Documentation
 
-- [Configuration](#️-configuration)
-- [Connection Management](#-connection-management)
-- [Alarm Control](#-alarm-control)
-- [Data Models](#️-data-models)
-- [Error Handling](#-error-handling)
+- [Configuration](#configuration)
+- [Connection Management](#connection-management)
+- [Alarm Control](#alarm-control)
+- [Data Models](#data-models)
+- [Error Handling](#error-handling)
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 ### Constructor Parameters — `IAlarmMkClient`
 
 | Parameter | Type | Default | Description |
 |-----------|:----:|:-------:|-------------|
-| **`host`** ⭐ | `str` | *required* | 🌐 IP address of the panel |
-| **`port`** ⭐ | `int` | *required* | 📡 TCP port (8000 for MK7, 18034 for MK2) |
-| **`username`** ⭐ | `str` | *required* | 👤 Login username |
-| **`password`** ⭐ | `str` | *required* | 🔐 Login password |
-| `timeout` | `float` | `10.0` | ⏱️ Socket timeout in seconds |
+| **`host`** | `str` | *required* | IP address of the panel |
+| **`port`** | `int` | *required* | TCP port (8000 for MK7, 18034 for MK2) |
+| **`username`** | `str` | *required* | Login username |
+| **`password`** | `str` | *required* | Login password |
+| `timeout` | `float` | `10.0` | Socket timeout in seconds |
 
 ---
 
-## 🔌 Connection Management
+## Connection Management
 
 ### Connect / Disconnect
 
@@ -116,7 +116,7 @@ async with IAlarmMkClient("192.168.1.100", 8000, "admin", "pass") as client:
 
 ---
 
-## 🎛️ Alarm Control
+## Alarm Control
 
 ```python
 await client.arm_away()      # Arm all zones
@@ -128,7 +128,7 @@ await client.cancel_alarm()  # Cancel active alarm
 
 ---
 
-## 🗃️ Data Models
+## Data Models
 
 ### `AlarmStatusModel`
 
@@ -140,14 +140,14 @@ await client.cancel_alarm()  # Cancel active alarm
 
 | Value | Name | Description |
 |:-----:|------|-------------|
-| `0` | `ARMED_AWAY` | Armed — all zones |
+| `0` | `ARMED_AWAY` | Armed, all zones |
 | `1` | `DISARMED` | Disarmed |
-| `2` | `ARMED_STAY` | Armed — stay mode |
+| `2` | `ARMED_STAY` | Armed, stay mode |
 | `3` | `CANCEL` | Alarm cancelled |
 | `4` | `TRIGGERED` | Alarm triggered |
 | `5` | `ALARM_ARMING` | Arming in progress |
 | `6` | `UNAVAILABLE` | Status unknown |
-| `8` | `ARMED_PARTIAL` | Armed — partial |
+| `8` | `ARMED_PARTIAL` | Armed, partial |
 
 ### `ZoneModel`
 
@@ -172,7 +172,7 @@ await client.cancel_alarm()  # Cancel active alarm
 
 ---
 
-## ⚠️ Error Handling
+## Error Handling
 
 | Exception | When raised |
 |-----------|-------------|
@@ -181,7 +181,7 @@ await client.cancel_alarm()  # Cancel active alarm
 | `IAlarmMkAlarmError` | Panel returned a non-zero error code for a command |
 
 ```python
-from open_ialarmmk_local_api import IAlarmMkConnectionError, IAlarmMkLoginError
+from open_ialarm_mk_local_api import IAlarmMkConnectionError, IAlarmMkLoginError
 
 try:
     async with IAlarmMkClient("192.168.1.100", 8000, "admin", "pass") as client:
@@ -194,7 +194,7 @@ except IAlarmMkConnectionError as e:
 
 ---
 
-## 📁 Examples
+## Examples
 
 Run any example directly from the repo root (no install needed):
 
@@ -206,8 +206,9 @@ python3 examples/subscribe_events.py --host 192.168.1.100 --user admin
 
 ---
 
-## 🧪 Testing
+## Testing
 
 ```bash
 python -m pytest tests/
 ```
+
