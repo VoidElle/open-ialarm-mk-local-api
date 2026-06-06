@@ -55,7 +55,7 @@ class IAlarmMkClient:
         logger.debug("get_status: requesting alarm status")
         loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(None, self._client.get_alarm_status)
-        raw = data.get("DevStatus", 0) or 0
+        raw = (data or {}).get("DevStatus", 0) or 0
         try:
             status = AlarmStatusEnum(int(raw))
         except ValueError:

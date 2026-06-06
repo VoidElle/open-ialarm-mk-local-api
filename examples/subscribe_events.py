@@ -4,7 +4,7 @@ The panel sends an event whenever the alarm status or a zone changes.
 Press Ctrl-C to stop.
 
 Usage:
-    python subscribe_events.py --host 192.168.1.100 --user admin --password secret
+    python subscribe_events.py --host 192.168.1.100 --user admin
 """
 
 import os
