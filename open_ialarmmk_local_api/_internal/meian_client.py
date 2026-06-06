@@ -249,15 +249,36 @@ class MeianClient:
     _seq: int = 0
     _timeout: float = 10.0
 
-    def __init__(self, host: str, port: int, username: str, password: str, timeout: float = 10.0):
+    def __init__(self, host: str, port: int, username: str, password: str, timeout: float = 10.0,
+                 keepalive_idle: int = 60):
         self._host = host
         self._port = port
         self._username = username
         self._password = password
         self._timeout = timeout
+        self._keepalive_idle = keepalive_idle
         self._sock: socket.socket | None = None
         self._token: str | None = None
         logger.debug("MeianClient created for %s:%d (user=%s, timeout=%.1fs)", host, port, username, timeout)
+
+    def _enable_keepalive(self) -> None:
+        """Enable TCP keep-alive on the active socket.
+
+        Activates ``SO_KEEPALIVE`` and, where the platform supports it, sets
+        the idle time (seconds before the first probe) to ``_keepalive_idle``.
+        Interval and probe-count are left at OS defaults.
+
+        Silently skips any option the OS does not expose (e.g. ``TCP_KEEPIDLE``
+        is Linux-only; macOS uses ``TCP_KEEPALIVE`` instead).
+        """
+        if self._sock is None:
+            return
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        for opt in ("TCP_KEEPIDLE", "TCP_KEEPALIVE"):  # Linux / macOS
+            if hasattr(socket, opt):
+                self._sock.setsockopt(socket.IPPROTO_TCP, getattr(socket, opt), self._keepalive_idle)
+                break
+        logger.debug("_enable_keepalive: SO_KEEPALIVE enabled (idle=%ds)", self._keepalive_idle)
 
     def login(self) -> None:
         """Open a TCP connection and authenticate with the panel.
@@ -281,6 +302,7 @@ class MeianClient:
         logger.debug("login: connecting to %s:%d (timeout=%.1fs)", self._host, self._port, self._timeout)
         try:
             self._sock.connect((self._host, self._port))
+            self._enable_keepalive()
             logger.debug("login: TCP connection established")
 
             cmd = OD()

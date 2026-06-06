@@ -357,3 +357,19 @@ class TestMeianClientLogin(unittest.TestCase):
              patch.object(client, "_receive", return_value=response):
             with self.assertRaises(IAlarmMkLoginError):
                 client.login()
+
+    @patch("open_ialarmmk_local_api._internal.meian_client.socket.socket")
+    def test_login_enables_keepalive_on_connect(self, mock_socket_cls):
+        """SO_KEEPALIVE is set on the socket after a successful connect."""
+        mock_sock = _make_mock_sock()
+        mock_sock.connect.return_value = None
+        mock_socket_cls.return_value = mock_sock
+        response = {"Root": {"Pair": {"Client": {"Err": 0}}}}
+        client = MeianClient("192.168.1.1", 8000, "user", "pass", keepalive_idle=30)
+        with patch.object(client, "_send"), \
+             patch.object(client, "_receive", return_value=response):
+            client.login()
+        calls = [
+            args for args, _ in mock_sock.setsockopt.call_args_list
+        ]
+        self.assertIn((socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1), calls)
