@@ -10,7 +10,7 @@ class NetworkInfoModel:
     @staticmethod
     def from_dict(data: dict) -> "NetworkInfoModel":
         return NetworkInfoModel(
-            mac=data.get("Mac", ""),
-            name=data.get("Name", "iAlarm-MK"),
-            ip=data.get("Ip", ""),
+            mac=data.get("Mac") or "",
+            name=data.get("Name") or "iAlarm-MK",
+            ip=data.get("Ip") or "",
         )

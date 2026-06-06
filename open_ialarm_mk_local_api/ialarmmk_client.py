@@ -70,7 +70,7 @@ class IAlarmMkClient:
         logger.debug("get_network_info: requesting network info")
         loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(None, self._client.get_network_info)
-        model = NetworkInfoModel.from_dict(data)
+        model = NetworkInfoModel.from_dict(data or {})
         logger.debug("get_network_info: name=%s mac=%s ip=%s", model.name, model.mac, model.ip)
         return model
 
@@ -84,12 +84,12 @@ class IAlarmMkClient:
             if zone is None:
                 logger.debug("get_zones: skipping None entry at index %d", i)
                 continue
-            status_raw = zone.get("Status", 0) or 0
+            status_raw = zone.get("Status") or 0
             zones.append(
                 ZoneModel(
                     index=i,
-                    name=zone.get("Name", ""),
-                    zone_type=zone.get("Type", 0) or 0,
+                    name=zone.get("Name") or "",
+                    zone_type=zone.get("Type") or 0,
                     status=ZoneStatusEnum(int(status_raw)),
                 )
             )
