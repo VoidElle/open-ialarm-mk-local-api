@@ -1,4 +1,4 @@
-# Open iAlarm-MK Local API
+# 🚨 Open iAlarm-MK Local API
 
 > *Asynchronous Python library for iAlarm-MK alarm panels via the local Meian protocol*
 
