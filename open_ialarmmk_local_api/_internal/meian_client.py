@@ -15,39 +15,60 @@ from ..exceptions.login_error import IAlarmMkLoginError
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Wire-protocol type encoders
+# Each function serialises a Python value into the Meian tagged-string format
+# used inside the XML payload, e.g. _str("hello") -> "STR,5|hello".
+# ---------------------------------------------------------------------------
+
 def _bol(en: bool) -> str:
+    """Encode a boolean as a Meian BOL field (``BOL|T`` / ``BOL|F``)."""
     if en is True:
         return "BOL|T"
     return "BOL|F"
 
 
 def _dta(t) -> str:
+    """Encode a ``time.struct_time`` as a Meian DTA timestamp field."""
     dta = time.strftime("%Y.%m.%d.%H.%M.%S", t)
     return "DTA,%d|%s" % (len(dta), dta)
 
 
 def _pwd(text: str) -> str:
+    """Encode a password string as a Meian PWD field."""
     return "PWD,%d|%s" % (len(text), text)
 
 
 def _s32(val: int, pos: int = 0) -> str:
+    """Encode an integer as a Meian S32 field.
+
+    *pos* is the position/index hint the panel uses for list operations.
+    """
     return "S32,%d,%d|%d" % (pos, pos, val)
 
 
 def _mac(mac: str) -> str:
+    """Encode a MAC address string as a Meian MAC field."""
     return "MAC,%d|%d" % (len(mac), mac)
 
 
 def _ipa(ip: str) -> str:
+    """Encode an IP address string as a Meian IPA field."""
     return "IPA,%d|%d" % (len(ip), ip)
 
 
 def _str(text: str) -> str:
+    """Encode any string as a Meian STR field (length-prefixed)."""
     text = str(text)
     return "STR,%d|%s" % (len(text), text)
 
 
 def _typ(val: int, typ: list | None = None) -> str:
+    """Encode an integer as a Meian TYP field using the provided label list.
+
+    If *val* is out of range the label is ``NONE``.
+    Example: ``_typ(0, ["ARM", "DISARM"])`` -> ``"TYP,ARM|0"``
+    """
     values = typ or []
     try:
         return "TYP,%s|%d" % (values[val], val)
@@ -55,7 +76,12 @@ def _typ(val: int, typ: list | None = None) -> str:
         return "TYP,NONE,|%d" % val
 
 
+# ---------------------------------------------------------------------------
+# XOR codec
+# ---------------------------------------------------------------------------
+
 # 128-byte repeating XOR key used for all Meian wire-protocol payloads.
+# The key repeats every 128 bytes (index & 0x7F selects the key byte).
 _XOR_KEY = bytearray.fromhex(
     "0c384e4e62382d620e384e4e44382d300f382b382b0c5a6234384e304e4c372b"
     "10535a0c20432d171142444e58422c421157322a204036172056446262382b5f"
@@ -63,6 +89,10 @@ _XOR_KEY = bytearray.fromhex(
     "10545a0c3e432e1711384e625824371c1157324220402c17204c444e624c2e12"
 )
 
+# ---------------------------------------------------------------------------
+# XML decoder regexes, compiled once at import time for performance.
+# Each pattern matches one Meian wire type tag and captures the payload value.
+# ---------------------------------------------------------------------------
 _BOL_RE = re.compile(r"BOL\|([FT])")
 _DTA_RE = re.compile(r"DTA(,\d+)*\|(\d{4}\.\d{2}.\d{2}.\d{2}.\d{2}.\d{2})")
 _ERR_RE = re.compile(r"ERR\|(\d{2})")
@@ -88,6 +118,11 @@ def _xor(data: bytes | bytearray) -> bytearray:
 
 
 def _create(path: str, mydict: dict | None = None) -> dict:
+    """Build a nested dict matching the given XPath-style *path*.
+
+    Example: ``_create("/Root/Host/GetZone", {"Total": None})``
+    -> ``{"Root": {"Host": {"GetZone": {"Total": None}}}}``
+    """
     root: dict = {}
     elem = root
     payload = mydict or {}
@@ -105,6 +140,10 @@ def _create(path: str, mydict: dict | None = None) -> dict:
 
 
 def _select(mydict: dict | list | None, path: str):
+    """Traverse *mydict* by the given XPath-style *path* and return the value.
+
+    Returns ``None`` if any intermediate key is missing.
+    """
     elem = mydict
     try:
         for part in path.strip("/").split("/"):
@@ -124,6 +163,7 @@ def _xmlread(path, key, value):
     Wire values carry an explicit type tag, e.g. ``STR,5|hello``,
     ``S32,0,0|42``, ``BOL|T``.  Each branch strips the tag and returns
     the natural Python type so callers never see raw Meian strings.
+    Non-string values (e.g. already-decoded ints) pass through unchanged.
     """
     try:
         input_value = value
@@ -167,6 +207,12 @@ def _xmlread(path, key, value):
 
 
 def _convert_dict_to_xml_recurse(parent: etree.Element, dictitem: dict) -> None:
+    """Recursively populate *parent* from *dictitem*.
+
+    Lists are expanded as repeated sibling elements (same tag).
+    ``None`` values produce an empty element (no text node), which is how
+    the Meian protocol signals "request this field".
+    """
     assert not isinstance(dictitem, list)
 
     if isinstance(dictitem, dict):
@@ -185,11 +231,19 @@ def _convert_dict_to_xml_recurse(parent: etree.Element, dictitem: dict) -> None:
 
 
 def _convert_dict_to_xml(xmldict: dict) -> etree.Element:
+    """Convert a nested dict to an lxml Element tree.
+
+    The top-level key of *xmldict* becomes the root element tag.
+    """
     root_tag = next(iter(xmldict))
     root = etree.Element(root_tag)
     _convert_dict_to_xml_recurse(root, xmldict[root_tag])
     return root
 
+
+# ---------------------------------------------------------------------------
+# MeianClient - synchronous TCP request/response client
+# ---------------------------------------------------------------------------
 
 class MeianClient:
     _seq: int = 0
@@ -203,18 +257,32 @@ class MeianClient:
         self._timeout = timeout
         self._sock: socket.socket | None = None
         self._token: str | None = None
+        logger.debug("MeianClient created for %s:%d (user=%s, timeout=%.1fs)", host, port, username, timeout)
 
     def login(self) -> None:
+        """Open a TCP connection and authenticate with the panel.
+
+        Sends a ``/Root/Pair/Client`` command containing the username,
+        password and a freshly generated UUID token.  The panel responds
+        with the same command; a non-zero ``Err`` field means the
+        credentials were rejected.
+        """
+        logger.debug("login: checking socket state")
         if self._sock is None or self._sock.fileno() == -1:
+            logger.debug("login: socket missing or closed, creating new socket")
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
         if self.is_socket_connected():
+            logger.debug("login: socket already connected, skipping")
             return
 
         assert self._sock is not None
         self._sock.settimeout(self._timeout)
+        logger.debug("login: connecting to %s:%d (timeout=%.1fs)", self._host, self._port, self._timeout)
         try:
             self._sock.connect((self._host, self._port))
+            logger.debug("login: TCP connection established")
+
             cmd = OD()
             cmd["Id"] = _str(self._username)
             cmd["Pwd"] = _pwd(self._password)
@@ -227,29 +295,44 @@ class MeianClient:
             cmd["DevType"] = None
             cmd["Err"] = None
             xpath = "/Root/Pair/Client"
+
+            logger.debug("login: sending Pair/Client (token=%s)", self._token)
             self._send(_create(xpath, cmd))
             client = _select(self._receive(), xpath) or {}
+
             if client.get("Err"):
+                logger.warning("login: panel rejected credentials (Err=%s)", client.get("Err"))
                 self.close_socket()
                 raise IAlarmMkLoginError("Login error")
+
+            logger.debug("login: authenticated successfully (token=%s)", self._token)
+
         except IAlarmMkLoginError:
             raise
         except socket.timeout as exc:
+            logger.error("login: connection timed out after %.1fs", self._timeout)
             self.close_socket()
             raise IAlarmMkConnectionError("Connection error: timeout") from exc
         except ConnectionRefusedError as exc:
+            logger.error("login: connection refused by %s:%d", self._host, self._port)
             self.close_socket()
             raise IAlarmMkConnectionError("Connection error: connection refused") from exc
         except OSError as exc:
+            logger.error("login: network error: %s", exc)
             self.close_socket()
             raise IAlarmMkConnectionError("Connection error: network error") from exc
 
     def logout(self) -> None:
+        """Close the TCP connection and reset session state."""
+        logger.debug("logout: closing connection (token=%s)", self._token)
         self.close_socket()
+        logger.debug("logout: done")
 
     def close_socket(self) -> None:
+        """Safely shut down and close the socket, suppressing OS errors."""
         if self._sock is None:
             return
+        logger.debug("close_socket: shutting down socket (token=%s)", self._token)
         try:
             try:
                 self._sock.shutdown(socket.SHUT_RDWR)
@@ -259,27 +342,50 @@ class MeianClient:
         finally:
             self._sock = None
             self._token = None
+            logger.debug("close_socket: socket closed and token cleared")
 
     def is_socket_connected(self) -> bool:
+        """Return True if the socket has an active peer connection.
+
+        Creates a fresh socket when the existing one is invalid or closed,
+        so callers can immediately attempt ``connect()`` on failure.
+        """
         if self._sock is None or self._sock.fileno() == -1:
+            logger.debug("is_socket_connected: socket invalid, reinitialising")
             self.close_socket()
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             return False
         try:
-            self._sock.getpeername()
+            peer = self._sock.getpeername()
+            logger.debug("is_socket_connected: connected to %s", peer)
+            return True
         except OSError:
+            logger.debug("is_socket_connected: getpeername failed, reinitialising socket")
             self.close_socket()
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             return False
-        return True
+
+    # ------------------------------------------------------------------
+    # High-level panel commands
+    # ------------------------------------------------------------------
 
     def get_alarm_status(self) -> dict:
+        """Request the current arm/disarm status from the panel.
+
+        Returns the decoded ``/Root/Host/GetAlarmStatus`` dict;
+        the ``DevStatus`` field holds the integer status code.
+        """
+        logger.debug("get_alarm_status: requesting panel status")
         cmd = OD()
         cmd["DevStatus"] = None
         cmd["Err"] = None
-        return self._("/Root/Host/GetAlarmStatus", cmd)
+        result = self._("/Root/Host/GetAlarmStatus", cmd)
+        logger.debug("get_alarm_status: DevStatus=%s", result.get("DevStatus") if result else None)
+        return result
 
     def get_network_info(self) -> dict:
+        """Request network configuration (MAC, Name, IP, gateway, DNS, etc.)."""
+        logger.debug("get_network_info: requesting network info")
         cmd = OD()
         cmd["Mac"] = None
         cmd["Name"] = None
@@ -289,21 +395,43 @@ class MeianClient:
         cmd["Dns1"] = None
         cmd["Dns2"] = None
         cmd["Err"] = None
-        return self._("/Root/Host/GetNet", cmd)
+        result = self._("/Root/Host/GetNet", cmd)
+        logger.debug("get_network_info: Name=%s Mac=%s Ip=%s",
+                     result.get("Name") if result else None,
+                     result.get("Mac") if result else None,
+                     result.get("Ip") if result else None)
+        return result
 
     def get_zones(self) -> list:
+        """Fetch the complete zone list from the panel (all pages)."""
+        logger.debug("get_zones: requesting zone list")
         cmd = OD()
         cmd["Total"] = None
         cmd["Offset"] = _s32(0)
         cmd["Ln"] = None
         cmd["Err"] = None
-        return self._("/Root/Host/GetZone", cmd, is_list=True)
+        result = self._("/Root/Host/GetZone", cmd, is_list=True)
+        logger.debug("get_zones: received %d zone entries", len(result))
+        return result
 
     def set_alarm_status(self, status: int) -> dict:
+        """Send a SetAlarmStatus command to the panel.
+
+        *status* maps to: 0=ARM, 1=DISARM, 2=STAY, 3=CLEAR, 8=PARTIAL.
+        """
+        _STATUS_LABELS = {0: "ARM", 1: "DISARM", 2: "STAY", 3: "CLEAR", 8: "PARTIAL"}
+        label = _STATUS_LABELS.get(status, str(status))
+        logger.debug("set_alarm_status: sending %s (code=%d)", label, status)
         cmd = OD()
         cmd["DevStatus"] = _typ(status, ["ARM", "DISARM", "STAY", "CLEAR", "", "", "", "", "PARTIAL"])
         cmd["Err"] = None
-        return self._("/Root/Host/SetAlarmStatus", cmd)
+        result = self._("/Root/Host/SetAlarmStatus", cmd)
+        logger.debug("set_alarm_status: panel acknowledged %s", label)
+        return result
+
+    # ------------------------------------------------------------------
+    # Low-level transport
+    # ------------------------------------------------------------------
 
     def _send(self, root: dict) -> None:
         """Serialize *root* to XOR-encoded XML and write it to the socket.
@@ -316,6 +444,7 @@ class MeianClient:
         xml = etree.tostring(_convert_dict_to_xml(root), pretty_print=False)
         self._seq += 1
         message = b"@ieM%04d%04d0000%s%04d" % (len(xml), self._seq, _xor(xml), self._seq)
+        logger.debug("_send: seq=%d xml_len=%d frame_len=%d", self._seq, len(xml), len(message))
         self._sock.send(message)
 
     def _receive(self) -> dict:
@@ -335,6 +464,7 @@ class MeianClient:
             self.close_socket()
             raise IAlarmMkConnectionError("Connection error") from exc
 
+        logger.debug("_receive: raw frame length=%d header=%s", len(data), data[0:4])
         return xmltodict.parse(
             _xor(data[16:-4]).decode(),
             xml_attribs=False,
@@ -351,26 +481,39 @@ class MeianClient:
         a flat list.
         """
         if offset > 0:
+            logger.debug("_: paginating %s offset=%d accumulated=%d", xpath, offset, len(items or []))
             cmd["Offset"] = _s32(offset)
+        else:
+            logger.debug("_: sending command to %s (is_list=%s)", xpath, is_list)
+
         root = _create(xpath, cmd)
         self._send(root)
         response = self._receive()
         payload = _select(response, xpath)
+
         if not is_list:
             if payload and payload.get("Err"):
+                logger.error("_: panel returned error for %s: %s", xpath, payload["Err"])
                 raise IAlarmMkAlarmError(f"Alarm error: {payload['Err']}")
+            logger.debug("_: response received for %s", xpath)
             return payload
 
         if items is None:
             items = []
         if payload and payload.get("Err"):
+            logger.error("_: panel returned error for %s (list): %s", xpath, payload["Err"])
             raise IAlarmMkAlarmError(f"Alarm error: {payload['Err']}")
 
         total = _select(response, f"{xpath}/Total") or 0
         ln = _select(response, f"{xpath}/Ln") or 0
+        logger.debug("_: list page total=%d ln=%d offset=%d", total, ln, offset)
         for index in range(ln):
             items.append(_select(response, f"{xpath}/L{index}"))
         offset += ln
         if total > offset:
+            # More pages remain; recurse with updated offset.
             self._(xpath, cmd, is_list=True, offset=offset, items=items)
+        else:
+            logger.debug("_: list complete, %d items fetched", len(items))
         return items
+

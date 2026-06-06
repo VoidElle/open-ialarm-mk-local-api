@@ -1,4 +1,4 @@
-"""arm_away.py — Arm, disarm or change mode on an iAlarm-MK panel.
+"""arm_away.py - Arm, disarm or change mode on an iAlarm-MK panel.
 
 Usage:
     python arm_away.py --host 192.168.1.100 --user admin --password secret arm-away

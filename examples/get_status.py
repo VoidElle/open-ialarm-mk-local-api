@@ -1,4 +1,4 @@
-"""get_status.py — Print panel status, network info and zone list.
+"""get_status.py - Print panel status, network info and zone list.
 
 Usage:
     python get_status.py --host 192.168.1.100 --user admin --password secret

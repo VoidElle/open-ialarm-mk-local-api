@@ -1,4 +1,4 @@
-"""subscribe_events.py — Subscribe to live push events from an iAlarm-MK panel.
+"""subscribe_events.py - Subscribe to live push events from an iAlarm-MK panel.
 
 The panel sends an event whenever the alarm status or a zone changes.
 Press Ctrl-C to stop.
