@@ -23,6 +23,11 @@ dependencies = [
     "xmltodict>=0.13",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/VoidElle/open-ialarmmk-local-api"
 Source = "https://github.com/VoidElle/open-ialarmmk-local-api"
