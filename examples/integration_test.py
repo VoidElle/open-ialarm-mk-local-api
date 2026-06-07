@@ -5,8 +5,8 @@ Does NOT leave the panel in a different state: it reads current status before
 arming, runs arm/disarm cycles, then restores the original status.
 
 Usage:
-    python integration_test.py --host 192.168.8.143 --user admin --password 012345
-    python integration_test.py --host 192.168.8.143 --port 8000 --user admin --password 012345 --skip-arm
+    python integration_test.py --host 192.168.1.100 --user admin --password secret
+    python integration_test.py --host 192.168.1.100 --port 8000 --user admin --password secret --skip-arm
 
 Sections:
     1.  TCP connect + login

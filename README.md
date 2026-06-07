@@ -55,7 +55,7 @@ import asyncio
 from open_ialarm_mk_local_api import IAlarmMkClient
 
 async def main():
-    async with IAlarmMkClient("192.168.1.100", 8000, "admin", "012345") as client:
+    async with IAlarmMkClient("192.168.1.100", 8000, "admin", "password") as client:
         status = await client.get_status()
         print(f"Status: {status.status.name}")
 
@@ -203,17 +203,17 @@ except IAlarmMkConnectionError as e:
 Run any example directly from the repo root (no install needed):
 
 ```bash
-python3 examples/get_status.py --host 192.168.1.100 --user admin --password 012345
-python3 examples/arm_away.py   --host 192.168.1.100 --user admin --password 012345 arm-partial
+python3 examples/get_status.py --host 192.168.1.100 --user admin --password password
+python3 examples/arm_away.py   --host 192.168.1.100 --user admin --password password arm-partial
 python3 examples/subscribe_events.py --host 192.168.1.100 --user admin
 ```
 
 ### Integration test against a real panel
 
 ```bash
-python3 examples/integration_test.py --host 192.168.1.100 --user admin --password 012345
+python3 examples/integration_test.py --host 192.168.1.100 --user admin --password password
 # skip arm/disarm on a live production panel:
-python3 examples/integration_test.py --host 192.168.1.100 --user admin --password 012345 --skip-arm
+python3 examples/integration_test.py --host 192.168.1.100 --user admin --password password --skip-arm
 ```
 
 ---
