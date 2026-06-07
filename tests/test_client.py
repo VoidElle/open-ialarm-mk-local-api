@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock, call, patch
 
@@ -214,6 +215,101 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
             [c.args[0] for c in backend.set_alarm_status.call_args_list],
             [0, 1, 2, 3, 8],
         )
+
+    # ------------------------------------------------------------------
+    # _run: lock serialization
+    # ------------------------------------------------------------------
+
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
+    async def test_concurrent_calls_are_serialized(self, meian_client_cls):
+        """Concurrent commands must not overlap on the socket."""
+        order = []
+        def slow_status():
+            order.append("start")
+            import time; time.sleep(0.01)
+            order.append("end")
+            return {"DevStatus": 1}
+
+        backend = MagicMock()
+        backend.get_alarm_status.side_effect = slow_status
+        meian_client_cls.return_value = backend
+        client = IAlarmMkClient("host", 1234, "user", "pass")
+
+        await asyncio.gather(client.get_status(), client.get_status())
+
+        self.assertEqual(order, ["start", "end", "start", "end"])
+
+    # ------------------------------------------------------------------
+    # _run: auto-reconnect
+    # ------------------------------------------------------------------
+
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
+    async def test_reconnects_on_connection_error_and_retries(self, meian_client_cls):
+        """On IAlarmMkConnectionError, client reconnects and retries the command."""
+        call_count = 0
+        def flaky_status():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise IAlarmMkConnectionError("dropped")
+            return {"DevStatus": 1}
+
+        backend = MagicMock()
+        backend.get_alarm_status.side_effect = flaky_status
+        meian_client_cls.return_value = backend
+        client = IAlarmMkClient("host", 1234, "user", "pass")
+
+        result = await client.get_status()
+
+        self.assertEqual(result.status, AlarmStatusEnum.DISARMED)
+        backend.login.assert_called_once()
+
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
+    async def test_raises_if_reconnect_also_fails(self, meian_client_cls):
+        """If reconnect itself fails, the original error is re-raised."""
+        backend = MagicMock()
+        backend.get_alarm_status.side_effect = IAlarmMkConnectionError("dropped")
+        backend.login.side_effect = IAlarmMkConnectionError("still down")
+        meian_client_cls.return_value = backend
+        client = IAlarmMkClient("host", 1234, "user", "pass")
+
+        with self.assertRaises(IAlarmMkConnectionError):
+            await client.get_status()
+
+    # ------------------------------------------------------------------
+    # keepalive task
+    # ------------------------------------------------------------------
+
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
+    async def test_keepalive_task_started_on_connect(self, meian_client_cls):
+        """Keepalive background task is created after connect()."""
+        backend = MagicMock()
+        meian_client_cls.return_value = backend
+        client = IAlarmMkClient("host", 1234, "user", "pass", keepalive_interval=30)
+        await client.connect()
+        self.assertIsNotNone(client._keepalive_task)
+        self.assertFalse(client._keepalive_task.done())
+        await client.disconnect()
+
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
+    async def test_keepalive_task_cancelled_on_disconnect(self, meian_client_cls):
+        """Keepalive task is cancelled when disconnect() is called."""
+        backend = MagicMock()
+        meian_client_cls.return_value = backend
+        client = IAlarmMkClient("host", 1234, "user", "pass", keepalive_interval=30)
+        await client.connect()
+        await client.disconnect()
+        self.assertIsNone(client._keepalive_task)
+
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
+    async def test_keepalive_disabled_when_interval_is_none(self, meian_client_cls):
+        """No keepalive task is created when keepalive_interval=None."""
+        backend = MagicMock()
+        meian_client_cls.return_value = backend
+        client = IAlarmMkClient("host", 1234, "user", "pass", keepalive_interval=None)
+        await client.connect()
+        self.assertIsNone(client._keepalive_task)
+        await client.disconnect()
 
 
 class TestIAlarmMkPushClient(unittest.IsolatedAsyncioTestCase):
