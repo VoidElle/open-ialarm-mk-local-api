@@ -96,15 +96,15 @@ class IAlarmMkClient:
         self._keepalive_task = None
 
     async def _keepalive_loop(self) -> None:
-        """Send a %maI ping every keepalive_interval seconds."""
+        """Poll get_alarm_status every keepalive_interval seconds to keep the connection alive."""
         try:
             while True:
                 await asyncio.sleep(self._keepalive_interval)
                 async with self._lock:
                     loop = asyncio.get_running_loop()
                     try:
-                        await loop.run_in_executor(None, self._client.ping)
-                        logger.debug("_keepalive_loop: ping sent")
+                        await loop.run_in_executor(None, self._client.get_alarm_status)
+                        logger.debug("_keepalive_loop: ping ok")
                     except IAlarmMkConnectionError:
                         logger.warning("_keepalive_loop: connection lost, attempting reconnect")
                         try:

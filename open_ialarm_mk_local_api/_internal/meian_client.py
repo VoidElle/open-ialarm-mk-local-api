@@ -397,23 +397,6 @@ class MeianClient:
     # High-level panel commands
     # ------------------------------------------------------------------
 
-    def ping(self) -> None:
-        """Send a ``%maI`` keepalive ping to the panel.
-
-        This is a raw write with no response — its only purpose is to
-        prevent NAT tables and the panel itself from dropping an idle
-        connection.  Raises ``IAlarmMkConnectionError`` if the socket
-        is gone so callers can trigger a reconnect.
-        """
-        if self._sock is None:
-            raise IAlarmMkConnectionError("Connection error")
-        logger.debug("ping: sending %%maI")
-        try:
-            self._sock.send(b"%maI")
-        except OSError as exc:
-            self.close_socket()
-            raise IAlarmMkConnectionError("Connection error") from exc
-
     def get_alarm_status(self) -> dict:
         """Request the current arm/disarm status from the panel.
 
