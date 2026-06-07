@@ -22,6 +22,9 @@
 - Framed two-phase read: large MK7 responses (>1024 bytes) always received in full
 - Graceful error propagation with full detail preserved
 - Auto-close socket on connection failure
+- Auto-reconnect: each command retries once on connection drop
+- Concurrent-safe: internal `asyncio.Lock` serializes all commands (Home Assistant coordinator safe)
+- Application-level keepalive: polls status every 30 s to prevent panel idle timeouts
 
 ### Developer Friendly
 - Type-safe dataclasses: `AlarmStatusModel`, `ZoneModel`, `NetworkInfoModel`
@@ -86,7 +89,7 @@ asyncio.run(main())
 
 ## Configuration
 
-### Constructor Parameters — `IAlarmMkClient`
+### Constructor Parameters: `IAlarmMkClient`
 
 | Parameter | Type | Default | Description |
 |-----------|:----:|:-------:|-------------|
@@ -95,6 +98,7 @@ asyncio.run(main())
 | **`username`** | `str` | *required* | Login username |
 | **`password`** | `str` | *required* | Login password |
 | `timeout` | `float` | `10.0` | Socket timeout in seconds |
+| `keepalive_interval` | `int \| None` | `30` | Seconds between keepalive polls; `None` to disable |
 
 ---
 
@@ -202,6 +206,14 @@ Run any example directly from the repo root (no install needed):
 python3 examples/get_status.py --host 192.168.1.100 --user admin --password 012345
 python3 examples/arm_away.py   --host 192.168.1.100 --user admin --password 012345 arm-partial
 python3 examples/subscribe_events.py --host 192.168.1.100 --user admin
+```
+
+### Integration test against a real panel
+
+```bash
+python3 examples/integration_test.py --host 192.168.1.100 --user admin --password 012345
+# skip arm/disarm on a live production panel:
+python3 examples/integration_test.py --host 192.168.1.100 --user admin --password 012345 --skip-arm
 ```
 
 ---

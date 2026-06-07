@@ -29,9 +29,9 @@ class IAlarmMkClient:
     one reconnect before re-raising, which covers the common case of an
     idle connection being dropped by the panel.
 
-    A background keepalive task sends a ``%maI`` ping every
-    ``keepalive_interval`` seconds to prevent NAT/panel idle timeouts on
-    long-lived connections. Set ``keepalive_interval=None`` to disable.
+    A background keepalive task polls ``get_alarm_status`` every
+    ``keepalive_interval`` seconds to prevent the panel from dropping an
+    idle connection. Set ``keepalive_interval=None`` to disable.
 
     Typical usage::
 
