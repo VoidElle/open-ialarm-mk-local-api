@@ -55,7 +55,7 @@ import asyncio
 from open_ialarm_mk_local_api import IAlarmMkClient
 
 async def main():
-    async with IAlarmMkClient("192.168.1.100", 8000, "admin", "password") as client:
+    async with IAlarmMkClient("192.168.1.100", 8000, "admin", "secret") as client:
         status = await client.get_status()
         print(f"Status: {status.status.name}")
 
