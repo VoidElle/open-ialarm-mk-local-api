@@ -93,7 +93,7 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
 
         status = await client.get_status()
 
-        self.assertEqual(status.status, AlarmStatusEnum.ARMED_AWAY)
+        self.assertEqual(status.status, AlarmStatusEnum.UNAVAILABLE)
 
     @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_get_status_all_enum_values(self, meian_client_cls):

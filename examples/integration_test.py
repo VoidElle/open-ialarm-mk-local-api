@@ -151,6 +151,15 @@ async def run(host: str, port: int, user: str, password: str, skip_arm: bool) ->
             skip("arm_stay / disarm", "--skip-arm passed")
             skip("arm_partial / disarm", "--skip-arm passed")
         else:
+            async def wait_for_status(expected: AlarmStatusEnum, timeout: float = 8.0, interval: float = 0.5) -> AlarmStatusEnum:
+                """Poll get_status until expected status or timeout. Returns final status."""
+                deadline = asyncio.get_event_loop().time() + timeout
+                while True:
+                    s = await client.get_status()
+                    if s.status == expected or asyncio.get_event_loop().time() >= deadline:
+                        return s.status
+                    await asyncio.sleep(interval)
+
             for label, arm_fn, code in [
                 ("arm_away",    client.arm_away,    AlarmStatusEnum.ARMED_AWAY),
                 ("arm_stay",    client.arm_stay,    AlarmStatusEnum.ARMED_STAY),
@@ -158,19 +167,18 @@ async def run(host: str, port: int, user: str, password: str, skip_arm: bool) ->
             ]:
                 try:
                     await arm_fn()
-                    await asyncio.sleep(1)
-                    status = await client.get_status()
-                    if status.status == code:
-                        ok(f"{label}", f"status confirmed: {status.status.name}")
+                    final = await wait_for_status(code)
+                    if final == code:
+                        ok(f"{label}", f"status confirmed: {final.name}")
                     else:
-                        ok(f"{label}", f"sent ok (panel reports {status.status.name})")
+                        ok(f"{label}", f"sent ok (panel reports {final.name})")
+                    await asyncio.sleep(3)  # let panel push the state change before disarming
                     await client.disarm()
-                    await asyncio.sleep(1)
-                    status = await client.get_status()
-                    if status.status == AlarmStatusEnum.DISARMED:
+                    final = await wait_for_status(AlarmStatusEnum.DISARMED)
+                    if final == AlarmStatusEnum.DISARMED:
                         ok(f"disarm after {label}")
                     else:
-                        fail(f"disarm after {label}", f"still {status.status.name}")
+                        fail(f"disarm after {label}", f"still {final.name}")
                 except Exception as exc:
                     fail(f"{label}", str(exc))
 

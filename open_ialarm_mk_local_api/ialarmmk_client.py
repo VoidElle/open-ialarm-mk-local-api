@@ -143,11 +143,11 @@ class IAlarmMkClient:
         """Return the current arm/disarm status of the panel."""
         logger.debug("get_status: requesting alarm status")
         data = await self._run(self._client.get_alarm_status)
-        raw = (data or {}).get("DevStatus") or 0
+        raw = (data or {}).get("DevStatus")
         try:
             status = AlarmStatusEnum(int(raw))
-        except ValueError:
-            logger.warning("get_status: unknown DevStatus value %r, mapping to UNAVAILABLE", raw)
+        except (TypeError, ValueError):
+            logger.debug("get_status: DevStatus %r not parseable (panel may be transitioning), returning UNAVAILABLE", raw)
             status = AlarmStatusEnum.UNAVAILABLE
         logger.debug("get_status: status=%s (%d)", status.name, status.value)
         return AlarmStatusModel(status=status)
