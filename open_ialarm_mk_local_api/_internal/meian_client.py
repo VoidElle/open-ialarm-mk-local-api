@@ -4,6 +4,7 @@ import socket
 import time
 import uuid
 from collections import OrderedDict as OD
+from typing import Callable
 
 from lxml import etree
 import xmltodict
@@ -11,6 +12,14 @@ import xmltodict
 from ..exceptions.alarm_error import IAlarmMkAlarmError
 from ..exceptions.connection_error import IAlarmMkConnectionError
 from ..exceptions.login_error import IAlarmMkLoginError
+from .paths import (
+    HOST_ALARM,
+    HOST_GET_ALARM_STATUS,
+    HOST_GET_NET,
+    HOST_GET_ZONE,
+    HOST_SET_ALARM_STATUS,
+    PAIR_CLIENT,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -250,7 +259,8 @@ class MeianClient:
     _timeout: float = 10.0
 
     def __init__(self, host: str, port: int, username: str, password: str, timeout: float = 10.0,
-                 keepalive_idle: int = 60):
+                 keepalive_idle: int = 60,
+                 on_unsolicited: Callable[[dict], None] | None = None):
         self._host = host
         self._port = port
         self._username = username
@@ -259,6 +269,7 @@ class MeianClient:
         self._keepalive_idle = keepalive_idle
         self._sock: socket.socket | None = None
         self._token: str | None = None
+        self.on_unsolicited = on_unsolicited
         logger.debug("MeianClient created for %s:%d (user=%s, timeout=%.1fs)", host, port, username, timeout)
 
     def _enable_keepalive(self) -> None:
@@ -316,7 +327,7 @@ class MeianClient:
             cmd["DevVersion"] = None
             cmd["DevType"] = None
             cmd["Err"] = None
-            xpath = "/Root/Pair/Client"
+            xpath = PAIR_CLIENT
 
             logger.debug("login: sending Pair/Client (token=%s)", self._token)
             self._send(_create(xpath, cmd))
@@ -407,7 +418,7 @@ class MeianClient:
         cmd = OD()
         cmd["DevStatus"] = None
         cmd["Err"] = None
-        result = self._("/Root/Host/GetAlarmStatus", cmd)
+        result = self._(HOST_GET_ALARM_STATUS, cmd)
         logger.debug("get_alarm_status: DevStatus=%s", result.get("DevStatus") if result else None)
         return result
 
@@ -423,7 +434,7 @@ class MeianClient:
         cmd["Dns1"] = None
         cmd["Dns2"] = None
         cmd["Err"] = None
-        result = self._("/Root/Host/GetNet", cmd)
+        result = self._(HOST_GET_NET, cmd)
         logger.debug("get_network_info: Name=%s Mac=%s Ip=%s",
                      result.get("Name") if result else None,
                      result.get("Mac") if result else None,
@@ -438,7 +449,7 @@ class MeianClient:
         cmd["Offset"] = _s32(0)
         cmd["Ln"] = None
         cmd["Err"] = None
-        result = self._("/Root/Host/GetZone", cmd, is_list=True)
+        result = self._(HOST_GET_ZONE, cmd, is_list=True)
         logger.debug("get_zones: received %d zone entries", len(result))
         return result
 
@@ -453,7 +464,7 @@ class MeianClient:
         cmd = OD()
         cmd["DevStatus"] = _typ(status, ["ARM", "DISARM", "STAY", "CLEAR", "", "", "", "", "PARTIAL"])
         cmd["Err"] = None
-        result = self._("/Root/Host/SetAlarmStatus", cmd)
+        result = self._(HOST_SET_ALARM_STATUS, cmd)
         logger.debug("set_alarm_status: panel acknowledged %s", label)
         return result
 
@@ -485,43 +496,88 @@ class MeianClient:
 
         Uses a two-phase read so that large MK7 login responses (> 1024 bytes)
         are received in full rather than truncated by a single ``recv(1024)``.
+
+        The panel sometimes pushes unsolicited event frames (``@alA``,
+        ``!lmX``) on the command connection between command responses.
+        These frames are fully parsed and forwarded to ``on_unsolicited``
+        (if set) before reading the next frame. Up to
+        ``_MAX_UNSOLICITED_SKIP`` such frames are handled per call before
+        raising ``IAlarmMkConnectionError``.
         """
-        if self._sock is None:
-            raise IAlarmMkConnectionError("Connection error")
-        try:
-            header = b""
-            while len(header) < 16:
-                chunk = self._sock.recv(16 - len(header))
-                if not chunk:
-                    raise IAlarmMkConnectionError("Connection closed while reading header")
-                header += chunk
+        _MAX_UNSOLICITED_SKIP = 5
+        for skip in range(_MAX_UNSOLICITED_SKIP + 1):
+            if self._sock is None:
+                raise IAlarmMkConnectionError("Connection error")
+            try:
+                header = b""
+                while len(header) < 16:
+                    chunk = self._sock.recv(16 - len(header))
+                    if not chunk:
+                        raise IAlarmMkConnectionError("Connection closed while reading header")
+                    header += chunk
 
-            payload_len = int(header[4:8])
-            logger.debug("_receive: header=%s declared payload_len=%d", header[0:4], payload_len)
+                payload_len = int(header[4:8])
+                logger.debug("_receive: header=%s declared payload_len=%d", header[0:4], payload_len)
 
-            to_read = payload_len + 4
-            body = b""
-            while len(body) < to_read:
-                chunk = self._sock.recv(min(4096, to_read - len(body)))
-                if not chunk:
-                    raise IAlarmMkConnectionError("Connection closed while reading payload")
-                body += chunk
+                to_read = payload_len + 4
+                body = b""
+                while len(body) < to_read:
+                    chunk = self._sock.recv(min(4096, to_read - len(body)))
+                    if not chunk:
+                        raise IAlarmMkConnectionError("Connection closed while reading payload")
+                    body += chunk
 
-            data = header + body
-        except IAlarmMkConnectionError:
-            raise
-        except socket.timeout as exc:
-            raise IAlarmMkConnectionError("Connection timed out") from exc
-        except OSError as exc:
-            self.close_socket()
-            raise IAlarmMkConnectionError("Connection error") from exc
+                data = header + body
+            except IAlarmMkConnectionError:
+                raise
+            except socket.timeout as exc:
+                raise IAlarmMkConnectionError("Connection timed out") from exc
+            except OSError as exc:
+                self.close_socket()
+                raise IAlarmMkConnectionError("Connection error") from exc
 
-        logger.debug("_receive: total frame length=%d", len(data))
-        return xmltodict.parse(
-            _xor(data[16:-4]).decode(),
-            xml_attribs=False,
-            dict_constructor=dict,
-            postprocessor=_xmlread,
+            logger.debug("_receive: total frame length=%d", len(data))
+
+            if header[0:4] != b"@ieM":
+                logger.debug(
+                    "_receive: unsolicited %s frame (%d bytes) received between commands",
+                    header[0:4], len(data),
+                )
+                if self.on_unsolicited is not None:
+                    try:
+                        if header[0:4] == b"@alA":
+                            resp = xmltodict.parse(
+                                _xor(data[16:-4]).decode(),
+                                xml_attribs=False,
+                                dict_constructor=dict,
+                                postprocessor=_xmlread,
+                            )
+                        elif header[0:4] == b"!lmX":
+                            resp = xmltodict.parse(
+                                data[16:-4],
+                                xml_attribs=False,
+                                dict_constructor=dict,
+                                postprocessor=_xmlread,
+                            )
+                        else:
+                            resp = None
+                        if resp is not None:
+                            event = _select(resp, HOST_ALARM)
+                            logger.debug("_receive: forwarding push event to on_unsolicited: %s", event)
+                            self.on_unsolicited(event)
+                    except Exception as exc:
+                        logger.warning("_receive: error processing unsolicited frame: %s", exc)
+                continue
+
+            return xmltodict.parse(
+                _xor(data[16:-4]).decode(),
+                xml_attribs=False,
+                dict_constructor=dict,
+                postprocessor=_xmlread,
+            )
+
+        raise IAlarmMkConnectionError(
+            f"Connection error: received {_MAX_UNSOLICITED_SKIP} consecutive unsolicited frames"
         )
 
     def _(self, xpath: str, cmd: OD, is_list: bool = False, offset: int = 0, items: list | None = None):
@@ -542,6 +598,11 @@ class MeianClient:
         self._send(root)
         response = self._receive()
         payload = _select(response, xpath)
+
+        if payload is None and not is_list:
+            logger.warning("_: expected %s not found in response, reading one more frame", xpath)
+            response = self._receive()
+            payload = _select(response, xpath)
 
         if not is_list:
             if payload and payload.get("Err"):

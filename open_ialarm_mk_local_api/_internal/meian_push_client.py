@@ -10,6 +10,7 @@ from lxml import etree
 
 from ..exceptions.alarm_error import IAlarmMkAlarmError
 from .meian_client import _convert_dict_to_xml, _create, _select, _str, _xmlread, _xor
+from .paths import HOST_ALARM, PAIR_PUSH, PAIR_PUSH_ERR
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,7 @@ class MeianPushProtocol(asyncio.Protocol):
         cmd = OD()
         cmd["Id"] = _str(uid)
         cmd["Err"] = None
-        self._message = _create("/Root/Pair/Push", cmd)
+        self._message = _create(PAIR_PUSH, cmd)
         logger.debug("MeianPushProtocol created for uid=%s", uid)
 
     def connection_made(self, transport) -> None:
@@ -76,9 +77,9 @@ class MeianPushProtocol(asyncio.Protocol):
                 dict_constructor=dict,
                 postprocessor=_xmlread,
             )
-            push = _select(resp, "/Root/Pair/Push")
+            push = _select(resp, PAIR_PUSH)
             if push:
-                err = _select(resp, "/Root/Pair/Push/Err")
+                err = _select(resp, PAIR_PUSH_ERR)
                 if err:
                     logger.error("data_received: push subscription rejected (Err=%s)", err)
                     self._close()
@@ -86,7 +87,7 @@ class MeianPushProtocol(asyncio.Protocol):
                 logger.debug("data_received: push subscription confirmed")
                 return
             # No Pair/Push node, treat as an alarm event.
-            event = _select(resp, "/Root/Host/Alarm")
+            event = _select(resp, HOST_ALARM)
             logger.debug("data_received: alarm event via @ieM frame: %s", event)
             self._handler(event)
             return
@@ -99,7 +100,7 @@ class MeianPushProtocol(asyncio.Protocol):
                 dict_constructor=dict,
                 postprocessor=_xmlread,
             )
-            event = _select(resp, "/Root/Host/Alarm")
+            event = _select(resp, HOST_ALARM)
             logger.debug("data_received: alarm event via @alA frame: %s", event)
             self._handler(event)
             return
@@ -112,7 +113,7 @@ class MeianPushProtocol(asyncio.Protocol):
                 dict_constructor=dict,
                 postprocessor=_xmlread,
             )
-            event = _select(resp, "/Root/Host/Alarm")
+            event = _select(resp, HOST_ALARM)
             logger.debug("data_received: alarm event via !lmX frame: %s", event)
             self._handler(event)
             return

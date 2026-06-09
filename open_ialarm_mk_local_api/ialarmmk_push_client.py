@@ -13,9 +13,17 @@ _RECONNECT_DELAY = 5
 class IAlarmMkPushClient:
     """High-level push-event subscriber for iAlarm-MK panels.
 
-    Creates a persistent TCP connection to the panel's push port and
+    Opens a **dedicated** TCP connection to the panel's push port and
     invokes *on_event* for every alarm event received.  The connection
     is re-established automatically if it drops.
+
+    .. note::
+        If you are already holding a persistent command connection via
+        :class:`IAlarmMkClient`, the panel will push the same alarm
+        events on that connection too (see ``IAlarmMkClient.on_event``).
+        In that case this class is redundant and adds an unnecessary
+        second TCP connection.  Use ``IAlarmMkPushClient`` only when you
+        need a push-only (read-only) connection with no command socket.
 
     Usage::
 
