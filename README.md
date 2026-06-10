@@ -166,6 +166,8 @@ await client.cancel_alarm()  # Cancel active alarm
 | `low_battery` | `bool` | Low battery detected |
 | `signal_loss` | `bool` | Wireless signal lost |
 
+> **Note:** `is_open` reflects the physical open/close state only when **"Check magnets"** (zone monitoring) is enabled for that zone in the iAlarm app. When disabled, the panel does not report fault status and `is_open` will always return `False` regardless of the physical state of the zone.
+
 ### `NetworkInfoModel`
 
 | Field | Type | Description |
