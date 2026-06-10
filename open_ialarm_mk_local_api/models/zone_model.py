@@ -12,7 +12,7 @@ class ZoneModel:
 
     @property
     def is_open(self) -> bool:
-        return bool(self.status & ZoneStatusEnum.IN_USE and self.status & ZoneStatusEnum.FAULT)
+        return bool(self.status & ZoneStatusEnum.FAULT)
 
     @property
     def is_bypassed(self) -> bool:

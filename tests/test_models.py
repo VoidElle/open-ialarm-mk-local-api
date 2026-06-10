@@ -71,14 +71,14 @@ class TestZoneModel(unittest.TestCase):
     def _make(self, status: ZoneStatusEnum) -> ZoneModel:
         return ZoneModel(index=0, name="Test", zone_type=1, status=status)
 
-    def test_is_open_requires_in_use_and_fault(self):
+    def test_is_open_requires_fault(self):
+        self.assertTrue(self._make(ZoneStatusEnum.FAULT).is_open)
+
+    def test_is_open_true_with_in_use_and_fault(self):
         self.assertTrue(self._make(ZoneStatusEnum.IN_USE | ZoneStatusEnum.FAULT).is_open)
 
     def test_is_open_false_when_only_in_use(self):
         self.assertFalse(self._make(ZoneStatusEnum.IN_USE).is_open)
-
-    def test_is_open_false_when_only_fault(self):
-        self.assertFalse(self._make(ZoneStatusEnum.FAULT).is_open)
 
     def test_is_open_false_when_not_used(self):
         self.assertFalse(self._make(ZoneStatusEnum.NOT_USED).is_open)
