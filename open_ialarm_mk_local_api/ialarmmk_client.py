@@ -108,6 +108,7 @@ class IAlarmMkClient:
                     except IAlarmMkConnectionError:
                         logger.warning("_keepalive_loop: connection lost, attempting reconnect")
                         try:
+                            await loop.run_in_executor(None, self._client.logout)
                             await loop.run_in_executor(None, self._client.login)
                             logger.debug("_keepalive_loop: reconnected")
                         except Exception as exc:
@@ -132,6 +133,7 @@ class IAlarmMkClient:
             except IAlarmMkConnectionError:
                 logger.warning("_run: connection lost, attempting reconnect to %s:%d", self._host, self._port)
                 try:
+                    await loop.run_in_executor(None, self._client.logout)
                     await loop.run_in_executor(None, self._client.login)
                     logger.debug("_run: reconnected, retrying command")
                     return await loop.run_in_executor(None, fn, *args)
