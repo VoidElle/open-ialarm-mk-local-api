@@ -71,3 +71,8 @@ class IAlarmMkPushClient:
             self._transport.close()
         logger.debug("cancel: done")
 
+    @property
+    def connected(self) -> bool:
+        """True when the push TCP connection is established and open."""
+        return self._transport is not None and not self._transport.is_closing()
+

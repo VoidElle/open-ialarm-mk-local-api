@@ -2,13 +2,11 @@ import asyncio
 import logging
 import random
 import threading
+import xmltodict
 from collections import OrderedDict as OD
+from lxml import etree
 from typing import Callable
 
-import xmltodict
-from lxml import etree
-
-from ..exceptions.alarm_error import IAlarmMkAlarmError
 from .meian_client import _convert_dict_to_xml, _create, _select, _str, _xmlread, _xor
 from .paths import HOST_ALARM, PAIR_PUSH, PAIR_PUSH_ERR
 
@@ -32,6 +30,7 @@ class MeianPushProtocol(asyncio.Protocol):
         self._handler = handler
         self._on_con_lost = on_con_lost
         self._transport: asyncio.Transport | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
         self._timer: threading.Timer | None = None
         # Pre-build the subscription XML so it is ready the moment the
         # connection is established.
@@ -44,6 +43,7 @@ class MeianPushProtocol(asyncio.Protocol):
     def connection_made(self, transport) -> None:
         """Called by asyncio when the TCP connection is established."""
         self._transport = transport
+        self._loop = asyncio.get_event_loop()
         peer = transport.get_extra_info("peername")
         logger.debug("connection_made: connected to %s", peer)
         self.handle_write()
@@ -71,19 +71,24 @@ class MeianPushProtocol(asyncio.Protocol):
         if head == b"@ieM":
             # Either a pairing acknowledgement or an alarm event embedded in a
             # pairing-style frame (some firmware versions do this).
-            resp = xmltodict.parse(
-                _xor(data[16:-4]).decode(),
-                xml_attribs=False,
-                dict_constructor=dict,
-                postprocessor=_xmlread,
-            )
+            try:
+                resp = xmltodict.parse(
+                    _xor(data[16:-4]).decode(),
+                    xml_attribs=False,
+                    dict_constructor=dict,
+                    postprocessor=_xmlread,
+                )
+            except Exception as exc:
+                logger.warning("data_received: failed to parse @ieM frame: %s", exc)
+                self._close()
+                return
             push = _select(resp, PAIR_PUSH)
             if push:
                 err = _select(resp, PAIR_PUSH_ERR)
                 if err:
                     logger.error("data_received: push subscription rejected (Err=%s)", err)
                     self._close()
-                    raise IAlarmMkAlarmError("Push subscription error")
+                    return
                 logger.debug("data_received: push subscription confirmed")
                 return
             # No Pair/Push node, treat as an alarm event.
@@ -94,12 +99,16 @@ class MeianPushProtocol(asyncio.Protocol):
 
         if head == b"@alA":
             # Standard alarm event frame (XOR-encoded XML).
-            resp = xmltodict.parse(
-                _xor(data[16:-4]).decode(),
-                xml_attribs=False,
-                dict_constructor=dict,
-                postprocessor=_xmlread,
-            )
+            try:
+                resp = xmltodict.parse(
+                    _xor(data[16:-4]).decode(),
+                    xml_attribs=False,
+                    dict_constructor=dict,
+                    postprocessor=_xmlread,
+                )
+            except Exception as exc:
+                logger.warning("data_received: failed to parse @alA frame: %s", exc)
+                return
             event = _select(resp, HOST_ALARM)
             logger.debug("data_received: alarm event via @alA frame: %s", event)
             self._handler(event)
@@ -107,12 +116,16 @@ class MeianPushProtocol(asyncio.Protocol):
 
         if head == b"!lmX":
             # Alternate alarm event frame (plain XML, no XOR).
-            resp = xmltodict.parse(
-                data[16:-4],
-                xml_attribs=False,
-                dict_constructor=dict,
-                postprocessor=_xmlread,
-            )
+            try:
+                resp = xmltodict.parse(
+                    data[16:-4],
+                    xml_attribs=False,
+                    dict_constructor=dict,
+                    postprocessor=_xmlread,
+                )
+            except Exception as exc:
+                logger.warning("data_received: failed to parse !lmX frame: %s", exc)
+                return
             event = _select(resp, HOST_ALARM)
             logger.debug("data_received: alarm event via !lmX frame: %s", event)
             self._handler(event)
@@ -120,7 +133,6 @@ class MeianPushProtocol(asyncio.Protocol):
 
         logger.warning("data_received: unrecognised frame header %s, closing", head)
         self._close()
-        raise IAlarmMkAlarmError("Response error")
 
     def connection_lost(self, exc) -> None:
         """Called by asyncio when the connection is closed or dropped."""
@@ -153,11 +165,11 @@ class MeianPushProtocol(asyncio.Protocol):
 
     def _keepalive(self) -> None:
         """Send a ``%maI`` keepalive ping to the panel."""
-        if self._transport is None or self._transport.is_closing():
+        if self._transport is None or self._transport.is_closing() or self._loop is None:
             logger.debug("_keepalive: transport gone, skipping")
             return
         logger.debug("_keepalive: sending %%maI ping")
-        self._transport.write(b"%maI")
+        self._loop.call_soon_threadsafe(self._transport.write, b"%maI")
 
     def _close(self) -> None:
         """Cancel the keepalive timer and tear down the transport."""

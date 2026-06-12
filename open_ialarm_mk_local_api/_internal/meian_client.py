@@ -58,12 +58,12 @@ def _s32(val: int, pos: int = 0) -> str:
 
 def _mac(mac: str) -> str:
     """Encode a MAC address string as a Meian MAC field."""
-    return "MAC,%d|%d" % (len(mac), mac)
+    return "MAC,%d|%s" % (len(mac), mac)
 
 
 def _ipa(ip: str) -> str:
     """Encode an IP address string as a Meian IPA field."""
-    return "IPA,%d|%d" % (len(ip), ip)
+    return "IPA,%d|%s" % (len(ip), ip)
 
 
 def _str(text: str) -> str:
@@ -543,12 +543,15 @@ class MeianClient:
                 )
                 continue
 
-            return xmltodict.parse(
-                _xor(data[16:-4]).decode(),
-                xml_attribs=False,
-                dict_constructor=dict,
-                postprocessor=_xmlread,
-            )
+            try:
+                return xmltodict.parse(
+                    _xor(data[16:-4]).decode(),
+                    xml_attribs=False,
+                    dict_constructor=dict,
+                    postprocessor=_xmlread,
+                )
+            except (UnicodeDecodeError, Exception) as exc:
+                raise IAlarmMkConnectionError(f"Failed to decode response frame: {exc}") from exc
 
         raise IAlarmMkConnectionError(
             f"Connection error: received {_MAX_UNSOLICITED_SKIP} consecutive unsolicited frames"
