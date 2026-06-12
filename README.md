@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/github/v/release/VoidElle/open-ialarm-mk-local-api?label=version)](https://github.com/VoidElle/open-ialarm-mk-local-api/releases)
 [![Tests](https://github.com/VoidElle/open-ialarm-mk-local-api/actions/workflows/tests.yml/badge.svg)](https://github.com/VoidElle/open-ialarm-mk-local-api/actions/workflows/tests.yml)
 
-**[Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Examples](#examples) • [Testing](#testing)**
+**[Features](#features) • [Installation](#installation) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Push Events](#real-time-push-events) • [Examples](#examples) • [Testing](#testing)**
 
 ---
 
@@ -182,7 +182,7 @@ await client.cancel_alarm()  # Cancel active alarm
 
 | Exception | When raised |
 |-----------|-------------|
-| `IAlarmMkConnectionError` | TCP failure, timeout, or unexpected error during login |
+| `IAlarmMkConnectionError` | TCP failure, timeout, malformed panel response, or unexpected error during login |
 | `IAlarmMkLoginError` | Panel rejected credentials |
 | `IAlarmMkAlarmError` | Panel returned a non-zero error code for a command |
 
@@ -197,6 +197,45 @@ except IAlarmMkLoginError:
 except IAlarmMkConnectionError as e:
     print(f"Connection failed: {e}")
 ```
+
+---
+
+## Real-Time Push Events
+
+For real-time alarm events (triggered, armed, disarmed) use `IAlarmMkPushClient`. It opens a dedicated TCP connection to the panel and invokes a callback for every event received. The connection is re-established automatically if it drops.
+
+```python
+import asyncio
+from open_ialarm_mk_local_api import IAlarmMkPushClient
+
+def on_event(event: dict):
+    print("Panel event:", event)
+
+async def main():
+    client = IAlarmMkPushClient("192.168.1.100", 8000, "admin", on_event)
+    await client.subscribe()  # blocks until client.cancel() is called
+
+asyncio.run(main())
+```
+
+### Constructor Parameters: `IAlarmMkPushClient`
+
+| Parameter | Type | Description |
+|-----------|:----:|-------------|
+| **`host`** | `str` | IP address of the panel |
+| **`port`** | `int` | TCP port (same as `IAlarmMkClient`) |
+| **`username`** | `str` | Login username |
+| **`on_event`** | `Callable[[dict], None]` | Callback invoked for each push event received |
+
+### Methods & Properties
+
+| Name | Description |
+|------|-------------|
+| `await subscribe()` | Connect and listen for events. Reconnects automatically. Blocks until `cancel()` is called. |
+| `cancel()` | Stop the subscription loop and close the connection. |
+| `connected` | `bool` — `True` when the push TCP connection is currently open. |
+
+> **Note:** Use `IAlarmMkPushClient` alongside `IAlarmMkClient` — they can both connect to the panel on the same port simultaneously. The command connection handles polling and control; the push client delivers real-time events reliably without batching delays.
 
 ---
 
