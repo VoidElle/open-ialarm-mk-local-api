@@ -41,9 +41,7 @@
 ## Installation
 
 ```bash
-git clone https://github.com/VoidElle/open-ialarm-mk-local-api
-cd open-ialarm-mk-local-api
-pip install -e .
+pip install open-ialarm-mk-local-api
 ```
 
 ---
