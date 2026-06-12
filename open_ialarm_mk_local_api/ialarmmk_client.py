@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from typing import Callable
 
 from ._internal.meian_client import MeianClient
 from .enums.alarm_status_enum import AlarmStatusEnum
@@ -34,29 +33,6 @@ class IAlarmMkClient:
     ``keepalive_interval`` seconds to prevent the panel from dropping an
     idle connection. Set ``keepalive_interval=None`` to disable.
 
-    **Unsolicited push events on the command connection**
-
-    When the command TCP connection is kept open (i.e. not closed after
-    each command), the panel will also push real-time alarm event frames
-    (``@alA`` / ``!lmX``) on it, the same events delivered by
-    :class:`IAlarmMkPushClient` on a dedicated push connection.  Set
-    ``on_event`` to a callable to receive these events:
-
-    .. code-block:: python
-
-        def handle(event: dict):
-            print("panel event:", event)
-
-        client.on_event = handle
-
-    The callback is invoked from a worker thread; schedule any
-    asyncio work with ``asyncio.run_coroutine_threadsafe``.
-
-    This means that for use cases where a persistent command connection
-    is already maintained (e.g. Home Assistant), a separate
-    :class:`IAlarmMkPushClient` connection is not required; events
-    arrive automatically on the existing connection.
-
     Typical usage::
 
         async with IAlarmMkClient("192.168.1.100", 8000, "user", "pass") as client:
@@ -72,15 +48,6 @@ class IAlarmMkClient:
         self._keepalive_interval = keepalive_interval
         self._keepalive_task: asyncio.Task | None = None
         logger.debug("IAlarmMkClient initialised for %s:%d", host, port)
-
-    @property
-    def on_event(self) -> Callable[[dict], None] | None:
-        """Callback invoked (from a worker thread) when the panel pushes an unsolicited event."""
-        return self._client.on_unsolicited
-
-    @on_event.setter
-    def on_event(self, callback: Callable[[dict], None] | None) -> None:
-        self._client.on_unsolicited = callback
 
     async def __aenter__(self):
         await self.connect()

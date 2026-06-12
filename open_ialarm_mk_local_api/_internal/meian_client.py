@@ -4,7 +4,7 @@ import socket
 import time
 import uuid
 from collections import OrderedDict as OD
-from typing import Callable
+
 
 from lxml import etree
 import xmltodict
@@ -259,8 +259,7 @@ class MeianClient:
     _timeout: float = 10.0
 
     def __init__(self, host: str, port: int, username: str, password: str, timeout: float = 10.0,
-                 keepalive_idle: int = 60,
-                 on_unsolicited: Callable[[dict], None] | None = None):
+                 keepalive_idle: int = 60):
         self._host = host
         self._port = port
         self._username = username
@@ -269,7 +268,6 @@ class MeianClient:
         self._keepalive_idle = keepalive_idle
         self._sock: socket.socket | None = None
         self._token: str | None = None
-        self.on_unsolicited = on_unsolicited
         logger.debug("MeianClient created for %s:%d (user=%s, timeout=%.1fs)", host, port, username, timeout)
 
     def _enable_keepalive(self) -> None:
@@ -540,33 +538,9 @@ class MeianClient:
 
             if header[0:4] != b"@ieM":
                 logger.debug(
-                    "_receive: unsolicited %s frame (%d bytes) received between commands",
+                    "_receive: unsolicited %s frame (%d bytes) skipped",
                     header[0:4], len(data),
                 )
-                if self.on_unsolicited is not None:
-                    try:
-                        if header[0:4] == b"@alA":
-                            resp = xmltodict.parse(
-                                _xor(data[16:-4]).decode(),
-                                xml_attribs=False,
-                                dict_constructor=dict,
-                                postprocessor=_xmlread,
-                            )
-                        elif header[0:4] == b"!lmX":
-                            resp = xmltodict.parse(
-                                data[16:-4],
-                                xml_attribs=False,
-                                dict_constructor=dict,
-                                postprocessor=_xmlread,
-                            )
-                        else:
-                            resp = None
-                        if resp is not None:
-                            event = _select(resp, HOST_ALARM)
-                            logger.debug("_receive: forwarding push event to on_unsolicited: %s", event)
-                            self.on_unsolicited(event)
-                    except Exception as exc:
-                        logger.warning("_receive: error processing unsolicited frame: %s", exc)
                 continue
 
             return xmltodict.parse(
