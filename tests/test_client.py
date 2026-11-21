@@ -29,6 +29,29 @@ class TestIAlarmMkClient(unittest.IsolatedAsyncioTestCase):
         backend.logout.assert_called_once_with()
 
     @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
+    async def test_unsolicited_callback_is_dispatched_on_event_loop(self, meian_client_cls):
+        backend = MagicMock()
+        meian_client_cls.return_value = backend
+        callback = MagicMock()
+        client = IAlarmMkClient(
+            "host",
+            1234,
+            "user",
+            "pass",
+            keepalive_interval=None,
+            on_unsolicited=callback,
+        )
+
+        await client.connect()
+
+        low_level_callback = meian_client_cls.call_args.kwargs["on_unsolicited"]
+        low_level_callback({"Cid": 1132, "Zone": 1})
+        await asyncio.sleep(0)
+
+        callback.assert_called_once_with({"Cid": 1132, "Zone": 1})
+        await client.disconnect()
+
+    @patch("open_ialarm_mk_local_api.ialarmmk_client.MeianClient")
     async def test_context_manager_connects_and_disconnects(self, meian_client_cls):
         backend = MagicMock()
         meian_client_cls.return_value = backend

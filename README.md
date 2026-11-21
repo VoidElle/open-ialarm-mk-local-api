@@ -31,6 +31,9 @@
 
 ### Reliability
 - Framed two-phase read: large MK7 responses (>1024 bytes) always received in full
+- Four-digit request sequence wraps safely after 9999
+- Push TCP stream buffering handles fragmented and coalesced frames
+- Optional command-socket unsolicited alarm callback
 - Graceful error propagation with full detail preserved
 - Auto-close socket on connection failure
 - Auto-reconnect: each command retries once on connection drop
@@ -108,6 +111,7 @@ asyncio.run(main())
 | **`password`** | `str` | *required* | Login password |
 | `timeout` | `float` | `10.0` | Socket timeout in seconds |
 | `keepalive_interval` | `int \| None` | `30` | Seconds between keepalive polls; `None` to disable |
+| `on_unsolicited` | `Callable[[dict], None] \| None` | `None` | Optional callback for alarm events received on the command socket |
 
 ---
 
@@ -126,6 +130,28 @@ await client.disconnect()
 async with IAlarmMkClient("192.168.1.100", 8000, "admin", "pass") as client:
     status = await client.get_status()
 ```
+
+### Unsolicited events on the command socket
+
+Some panel firmware may deliver alarm frames on the command connection while a
+request is waiting for its normal response. Pass `on_unsolicited` to receive
+those events without consuming or losing the pending command response.
+
+```python
+def on_unsolicited(event: dict):
+    print("Command-socket event:", event)
+
+client = IAlarmMkClient(
+    "192.168.1.100",
+    8000,
+    "admin",
+    "pass",
+    on_unsolicited=on_unsolicited,
+)
+await client.connect()
+```
+
+The async client dispatches this callback on its asyncio event loop.
 
 ---
 

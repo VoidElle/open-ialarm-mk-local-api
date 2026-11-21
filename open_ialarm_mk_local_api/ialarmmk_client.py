@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Callable
 
 from ._internal.meian_client import MeianClient
 from .enums.alarm_status_enum import AlarmStatusEnum
@@ -39,14 +40,31 @@ class IAlarmMkClient:
             status = await client.get_status()
     """
 
-    def __init__(self, host: str, port: int, username: str, password: str,
-                 timeout: float = 10.0, keepalive_interval: int | None = _KEEPALIVE_DEFAULT):
-        self._client = MeianClient(host, port, username, password, timeout)
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        username: str,
+        password: str,
+        timeout: float = 10.0,
+        keepalive_interval: int | None = _KEEPALIVE_DEFAULT,
+        on_unsolicited: Callable[[dict], None] | None = None,
+    ):
         self._host = host
         self._port = port
         self._lock = asyncio.Lock()
         self._keepalive_interval = keepalive_interval
         self._keepalive_task: asyncio.Task | None = None
+        self._on_unsolicited = on_unsolicited
+        self._event_loop: asyncio.AbstractEventLoop | None = None
+        self._client = MeianClient(
+            host,
+            port,
+            username,
+            password,
+            timeout,
+            on_unsolicited=self._dispatch_unsolicited,
+        )
         logger.debug("IAlarmMkClient initialised for %s:%d", host, port)
 
     async def __aenter__(self):
@@ -60,6 +78,7 @@ class IAlarmMkClient:
         """Open a TCP connection, authenticate, and start the keepalive task."""
         logger.debug("connect: logging in to %s:%d", self._host, self._port)
         loop = asyncio.get_running_loop()
+        self._event_loop = loop
         await loop.run_in_executor(None, self._client.login)
         logger.debug("connect: logged in successfully")
         self._start_keepalive()
@@ -71,6 +90,21 @@ class IAlarmMkClient:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self._client.logout)
         logger.debug("disconnect: done")
+
+    def _dispatch_unsolicited(self, event: dict) -> None:
+        """Forward a command-socket event onto the client's asyncio loop.
+
+        MeianClient receives command responses in a worker thread. Public
+        callbacks are therefore marshalled back to the event loop before user
+        code is invoked.
+        """
+        if self._on_unsolicited is None:
+            return
+        loop = self._event_loop
+        if loop is None or loop.is_closed():
+            logger.debug("_dispatch_unsolicited: event loop unavailable, dropping event")
+            return
+        loop.call_soon_threadsafe(self._on_unsolicited, event)
 
     # ------------------------------------------------------------------
     # Keepalive

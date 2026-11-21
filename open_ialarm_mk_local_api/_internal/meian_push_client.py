@@ -32,6 +32,7 @@ class MeianPushProtocol(asyncio.Protocol):
         self._transport: asyncio.Transport | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._timer: threading.Timer | None = None
+        self._buffer = bytearray()
         # Pre-build the subscription XML so it is ready the moment the
         # connection is established.
         cmd = OD()
@@ -50,23 +51,75 @@ class MeianPushProtocol(asyncio.Protocol):
         self._schedule_keepalive()
 
     def data_received(self, data: bytes) -> None:
-        """Route incoming frames by their 4-byte magic header.
+        """Buffer TCP bytes and process every complete protocol frame.
 
-        ``%maI`` - keepalive ping from the panel; reschedule our keepalive timer.
-        ``@ieM`` - pairing response or alarm event (depends on XPath content).
-        ``@alA`` - alarm event (XOR-encoded XML).
-        ``!lmX`` - alternate alarm event (plain XML, no XOR).
+        TCP is a byte stream: one callback may contain a fragment of a frame
+        or several frames concatenated together. Keep incomplete bytes until a
+        complete frame can be extracted.
         """
         if isinstance(data, str):
             data = data.encode()
-        head = data[0:4]
-        logger.debug("data_received: %d bytes, header=%s", len(data), head)
-
-        if head == b"%maI":
-            # Panel responded to our keepalive, reset the timer.
-            logger.debug("data_received: keepalive acknowledged by panel")
-            self._schedule_keepalive()
+        if not data:
             return
+
+        self._buffer.extend(data)
+        logger.debug(
+            "data_received: buffered %d bytes (received=%d)",
+            len(self._buffer),
+            len(data),
+        )
+
+        while self._buffer:
+            if len(self._buffer) < 4:
+                return
+
+            head = bytes(self._buffer[:4])
+
+            if head == b"%maI":
+                del self._buffer[:4]
+                logger.debug("data_received: keepalive acknowledged by panel")
+                self._schedule_keepalive()
+                continue
+
+            if head not in (b"@ieM", b"@alA", b"!lmX"):
+                logger.warning(
+                    "data_received: unrecognised frame header %s, closing",
+                    head,
+                )
+                self._buffer.clear()
+                self._close()
+                return
+
+            if len(self._buffer) < 16:
+                return
+
+            try:
+                payload_len = int(bytes(self._buffer[4:8]))
+            except ValueError:
+                logger.warning(
+                    "data_received: invalid payload length in %s frame",
+                    head,
+                )
+                self._buffer.clear()
+                self._close()
+                return
+
+            frame_len = 16 + payload_len + 4
+            if len(self._buffer) < frame_len:
+                return
+
+            frame = bytes(self._buffer[:frame_len])
+            del self._buffer[:frame_len]
+            self._handle_frame(frame)
+
+            if self._on_con_lost.done():
+                self._buffer.clear()
+                return
+
+    def _handle_frame(self, data: bytes) -> None:
+        """Decode and dispatch one complete non-keepalive frame."""
+        head = data[0:4]
+        logger.debug("_handle_frame: %d bytes, header=%s", len(data), head)
 
         if head == b"@ieM":
             # Either a pairing acknowledgement or an alarm event embedded in a
@@ -79,26 +132,24 @@ class MeianPushProtocol(asyncio.Protocol):
                     postprocessor=_xmlread,
                 )
             except Exception as exc:
-                logger.warning("data_received: failed to parse @ieM frame: %s", exc)
+                logger.warning("_handle_frame: failed to parse @ieM frame: %s", exc)
                 self._close()
                 return
             push = _select(resp, PAIR_PUSH)
             if push:
                 err = _select(resp, PAIR_PUSH_ERR)
                 if err:
-                    logger.error("data_received: push subscription rejected (Err=%s)", err)
+                    logger.error("_handle_frame: push subscription rejected (Err=%s)", err)
                     self._close()
                     return
-                logger.debug("data_received: push subscription confirmed")
+                logger.debug("_handle_frame: push subscription confirmed")
                 return
-            # No Pair/Push node, treat as an alarm event.
             event = _select(resp, HOST_ALARM)
-            logger.debug("data_received: alarm event via @ieM frame: %s", event)
+            logger.debug("_handle_frame: alarm event via @ieM frame: %s", event)
             self._handler(event)
             return
 
         if head == b"@alA":
-            # Standard alarm event frame (XOR-encoded XML).
             try:
                 resp = xmltodict.parse(
                     _xor(data[16:-4]).decode(),
@@ -107,15 +158,14 @@ class MeianPushProtocol(asyncio.Protocol):
                     postprocessor=_xmlread,
                 )
             except Exception as exc:
-                logger.warning("data_received: failed to parse @alA frame: %s", exc)
+                logger.warning("_handle_frame: failed to parse @alA frame: %s", exc)
                 return
             event = _select(resp, HOST_ALARM)
-            logger.debug("data_received: alarm event via @alA frame: %s", event)
+            logger.debug("_handle_frame: alarm event via @alA frame: %s", event)
             self._handler(event)
             return
 
         if head == b"!lmX":
-            # Alternate alarm event frame (plain XML, no XOR).
             try:
                 resp = xmltodict.parse(
                     data[16:-4],
@@ -124,15 +174,12 @@ class MeianPushProtocol(asyncio.Protocol):
                     postprocessor=_xmlread,
                 )
             except Exception as exc:
-                logger.warning("data_received: failed to parse !lmX frame: %s", exc)
+                logger.warning("_handle_frame: failed to parse !lmX frame: %s", exc)
                 return
             event = _select(resp, HOST_ALARM)
-            logger.debug("data_received: alarm event via !lmX frame: %s", event)
+            logger.debug("_handle_frame: alarm event via !lmX frame: %s", event)
             self._handler(event)
             return
-
-        logger.warning("data_received: unrecognised frame header %s, closing", head)
-        self._close()
 
     def connection_lost(self, exc) -> None:
         """Called by asyncio when the connection is closed or dropped."""

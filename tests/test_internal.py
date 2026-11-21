@@ -4,6 +4,7 @@ import socket
 import unittest
 from unittest.mock import MagicMock, patch
 
+from open_ialarm_mk_local_api._internal.meian_push_client import MeianPushProtocol
 from open_ialarm_mk_local_api._internal.meian_client import (
     MeianClient,
     _bol,
@@ -27,8 +28,14 @@ from open_ialarm_mk_local_api.exceptions.login_error import IAlarmMkLoginError
 # ---------------------------------------------------------------------------
 
 def _build_frame(xml: bytes, seq: int = 1) -> bytes:
-    """Return a complete ``@ieM`` framed message for *xml*."""
+    """Return a complete @ieM framed message for xml."""
     return b"@ieM%04d%04d0000%s%04d" % (len(xml), seq, _xor(xml), seq)
+
+
+def _build_unsolicited_frame(xml: bytes, magic: bytes, seq: int = 0) -> bytes:
+    """Return a complete unsolicited alarm frame."""
+    payload = _xor(xml) if magic == b"@alA" else xml
+    return magic + (b"%04d%04d0000%s%04d" % (len(xml), seq, payload, seq))
 
 
 def _chunked_recv(data: bytes, chunk_size: int):
@@ -158,6 +165,12 @@ class TestXmlread(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 _SIMPLE_XML = b"<Root><Host><GetAlarmStatus><DevStatus>S32,0,0|0</DevStatus></GetAlarmStatus></Host></Root>"
+_UNSOLICITED_XML = (
+    b"<Root><Host><Alarm>"
+    b"<Cid>S32,0,0|1132</Cid>"
+    b"<Zone>S32,0,0|1</Zone>"
+    b"</Alarm></Host></Root>"
+)
 
 # A large XML that exceeds 1024 bytes (simulates MK7 login response).
 # All values use valid Meian type tags so _xmlread can decode them.
@@ -183,7 +196,131 @@ def _make_client() -> MeianClient:
     return client
 
 
+# ---------------------------------------------------------------------------
+# MeianClient._send() — four-digit sequence rollover
+# ---------------------------------------------------------------------------
+
+class TestMeianClientSend(unittest.TestCase):
+
+    def test_send_sequence_wraps_after_9999(self):
+        """The four-digit wire sequence wraps from 9999 back to 0001."""
+        client = _make_client()
+        client._seq = 9998
+        root = _create(
+            "/Root/Host/GetAlarmStatus",
+            {"DevStatus": None},
+        )
+
+        client._send(root)
+        client._send(root)
+
+        first_frame = client._sock.send.call_args_list[0].args[0]
+        second_frame = client._sock.send.call_args_list[1].args[0]
+
+        self.assertEqual(first_frame[8:12], b"9999")
+        self.assertEqual(first_frame[-4:], b"9999")
+        self.assertEqual(second_frame[8:12], b"0001")
+        self.assertEqual(second_frame[-4:], b"0001")
+        self.assertEqual(client._seq, 1)
+
+    def test_close_socket_resets_sequence(self):
+        """A new authenticated TCP session starts with a fresh sequence."""
+        client = _make_client()
+        client._seq = 4321
+
+        client.close_socket()
+
+        self.assertEqual(client._seq, 0)
+
+
 class TestMeianClientReceive(unittest.TestCase):
+
+    def test_receive_forwards_xor_unsolicited_alarm_then_returns_response(self):
+        """@alA is decoded, forwarded, and does not consume the command response."""
+        callback = MagicMock()
+        client = MeianClient(
+            "192.168.1.1",
+            8000,
+            "user",
+            "pass",
+            on_unsolicited=callback,
+        )
+        client._sock = MagicMock(spec=socket.socket)
+
+        event_frame = _build_unsolicited_frame(_UNSOLICITED_XML, b"@alA")
+        response_frame = _build_frame(_SIMPLE_XML)
+        client._sock.recv.side_effect = [
+            event_frame[:16],
+            event_frame[16:],
+            response_frame[:16],
+            response_frame[16:],
+        ]
+
+        result = client._receive()
+
+        callback.assert_called_once_with({"Cid": 1132, "Zone": 1})
+        self.assertEqual(
+            result["Root"]["Host"]["GetAlarmStatus"]["DevStatus"],
+            0,
+        )
+
+    def test_receive_forwards_plain_unsolicited_alarm_then_returns_response(self):
+        """!lmX is decoded, forwarded, and does not consume the command response."""
+        callback = MagicMock()
+        client = MeianClient(
+            "192.168.1.1",
+            8000,
+            "user",
+            "pass",
+            on_unsolicited=callback,
+        )
+        client._sock = MagicMock(spec=socket.socket)
+
+        event_frame = _build_unsolicited_frame(_UNSOLICITED_XML, b"!lmX")
+        response_frame = _build_frame(_SIMPLE_XML)
+        client._sock.recv.side_effect = [
+            event_frame[:16],
+            event_frame[16:],
+            response_frame[:16],
+            response_frame[16:],
+        ]
+
+        result = client._receive()
+
+        callback.assert_called_once_with({"Cid": 1132, "Zone": 1})
+        self.assertEqual(
+            result["Root"]["Host"]["GetAlarmStatus"]["DevStatus"],
+            0,
+        )
+
+    def test_unsolicited_callback_error_does_not_break_command_response(self):
+        """A consumer callback failure must not corrupt request/response handling."""
+        callback = MagicMock(side_effect=RuntimeError("consumer failed"))
+        client = MeianClient(
+            "192.168.1.1",
+            8000,
+            "user",
+            "pass",
+            on_unsolicited=callback,
+        )
+        client._sock = MagicMock(spec=socket.socket)
+
+        event_frame = _build_unsolicited_frame(_UNSOLICITED_XML, b"@alA")
+        response_frame = _build_frame(_SIMPLE_XML)
+        client._sock.recv.side_effect = [
+            event_frame[:16],
+            event_frame[16:],
+            response_frame[:16],
+            response_frame[16:],
+        ]
+
+        result = client._receive()
+
+        callback.assert_called_once()
+        self.assertEqual(
+            result["Root"]["Host"]["GetAlarmStatus"]["DevStatus"],
+            0,
+        )
 
     def test_receive_small_payload_in_one_chunk(self):
         """Standard single-chunk recv still works after the fix."""
@@ -265,6 +402,82 @@ class TestMeianClientReceive(unittest.TestCase):
         client._sock = None
         with self.assertRaises(IAlarmMkConnectionError):
             client._receive()
+
+
+# ---------------------------------------------------------------------------
+# MeianPushProtocol — TCP stream buffering
+# ---------------------------------------------------------------------------
+
+class TestMeianPushProtocolBuffering(unittest.TestCase):
+
+    def _make_protocol(self):
+        handler = MagicMock()
+        on_con_lost = MagicMock()
+        on_con_lost.done.return_value = False
+        protocol = MeianPushProtocol("user", handler, on_con_lost)
+        protocol._schedule_keepalive = MagicMock()
+        return protocol, handler, on_con_lost
+
+    def test_fragmented_alarm_frame_is_reassembled(self):
+        """One alarm frame split across callbacks is delivered exactly once."""
+        protocol, handler, _ = self._make_protocol()
+        frame = _build_unsolicited_frame(_UNSOLICITED_XML, b"@alA")
+
+        protocol.data_received(frame[:3])
+        protocol.data_received(frame[3:11])
+        protocol.data_received(frame[11:27])
+        self.assertFalse(handler.called)
+
+        protocol.data_received(frame[27:])
+
+        handler.assert_called_once_with({"Cid": 1132, "Zone": 1})
+        self.assertEqual(protocol._buffer, bytearray())
+
+    def test_coalesced_alarm_frames_are_all_delivered(self):
+        """Multiple complete frames in one TCP callback are all processed."""
+        protocol, handler, _ = self._make_protocol()
+        first = _build_unsolicited_frame(_UNSOLICITED_XML, b"@alA", seq=1)
+        second = _build_unsolicited_frame(_UNSOLICITED_XML, b"!lmX", seq=2)
+
+        protocol.data_received(first + second)
+
+        self.assertEqual(handler.call_count, 2)
+        self.assertEqual(
+            handler.call_args_list[0].args[0],
+            {"Cid": 1132, "Zone": 1},
+        )
+        self.assertEqual(
+            handler.call_args_list[1].args[0],
+            {"Cid": 1132, "Zone": 1},
+        )
+        self.assertEqual(protocol._buffer, bytearray())
+
+    def test_keepalive_and_alarm_can_arrive_together(self):
+        """A keepalive prefix does not hide a following framed alarm event."""
+        protocol, handler, _ = self._make_protocol()
+        frame = _build_unsolicited_frame(_UNSOLICITED_XML, b"@alA")
+
+        protocol.data_received(b"%maI" + frame)
+
+        protocol._schedule_keepalive.assert_called_once_with()
+        handler.assert_called_once_with({"Cid": 1132, "Zone": 1})
+        self.assertEqual(protocol._buffer, bytearray())
+
+    def test_partial_second_frame_remains_buffered(self):
+        """A complete first frame is emitted while the next fragment is retained."""
+        protocol, handler, _ = self._make_protocol()
+        first = _build_unsolicited_frame(_UNSOLICITED_XML, b"@alA", seq=1)
+        second = _build_unsolicited_frame(_UNSOLICITED_XML, b"@alA", seq=2)
+
+        protocol.data_received(first + second[:9])
+
+        handler.assert_called_once()
+        self.assertEqual(protocol._buffer, bytearray(second[:9]))
+
+        protocol.data_received(second[9:])
+
+        self.assertEqual(handler.call_count, 2)
+        self.assertEqual(protocol._buffer, bytearray())
 
 
 # ---------------------------------------------------------------------------
